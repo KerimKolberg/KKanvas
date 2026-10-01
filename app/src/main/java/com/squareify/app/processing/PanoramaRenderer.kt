@@ -18,7 +18,7 @@ object PanoramaRenderer {
     fun renderStrip(source: Bitmap, panorama: Panorama, settings: FrameSettings, width: Int, height: Int): Bitmap {
         val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawStrip(Canvas(output), source, panorama, settings, width.toFloat(), height.toFloat())
-        return PhotoProcessor.applyAdjustments(output, settings.adjustments)
+        return PhotoProcessor.applyAdjustments(output, settings.adjustments).also { PhotoProcessor.drawText(it, settings) }
     }
 
     /**
@@ -45,6 +45,12 @@ object PanoramaRenderer {
             val area = RectF(-index * slideWidth.toFloat(), 0f, stripWidth - index * slideWidth, slideHeight.toFloat())
             PhotoProcessor.drawVignette(Canvas(result), area, vignette)
         }
+        // Text sits on the panorama as a whole too: it may run across slides.
+        TextRenderer.draw(
+            Canvas(result).apply { translate(-index * slideWidth.toFloat(), 0f) },
+            settings.text,
+            RectF(0f, 0f, stripWidth, slideHeight.toFloat()),
+        )
         return result
     }
 

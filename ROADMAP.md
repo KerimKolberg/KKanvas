@@ -27,14 +27,15 @@
 - Panorama carousel: one wide photo split into 2-10 slides (auto count from its shape), Fill
   with position or Fit with background, 1:1 / 4:5 / 3:4, looks across the whole panorama;
   slides saved 1440 px wide as carousel_<name>_N and shared in order.
+- Text: a caption or title per item (photos, videos, collages, panoramas) in 6 built-in
+  fonts, with size, colour, shadow/box backdrop, alignment and height; drawn after the look.
 
 ## Next
-1. **Text**: captions/titles with a few fonts.
-2. **Frame styles**: Polaroid, film strip, thin white border.
-3. **Smart crop**: keep faces in view when cropping (collages).
-4. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
-5. Watermark (kk logo).
-6. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. **Frame styles**: Polaroid, film strip, thin white border.
+2. **Smart crop**: keep faces in view when cropping (collages).
+3. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
+4. Watermark (kk logo).
+5. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.

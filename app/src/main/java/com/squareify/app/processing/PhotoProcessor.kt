@@ -129,7 +129,12 @@ object PhotoProcessor {
         val photo = photoRect(source, marginInset(settings, width, height), width, height)
         drawImage(canvas, source, fullRect(source), photo, settings.border)
 
-        return applyAdjustments(output, settings.adjustments)
+        return applyAdjustments(output, settings.adjustments).also { drawText(it, settings) }
+    }
+
+    /** Draws the caption, if any, over the whole of [bitmap]. */
+    fun drawText(bitmap: Bitmap, settings: FrameSettings) {
+        TextRenderer.draw(Canvas(bitmap), settings.text, RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()))
     }
 
     /** The margin on each side in pixels, for a [width] x [height] canvas. */

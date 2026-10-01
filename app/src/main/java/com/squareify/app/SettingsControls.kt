@@ -56,6 +56,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Typeface
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
@@ -119,9 +121,11 @@ fun StyleControls(
     sample: Bitmap? = null,
     /** False where a border makes no sense (panorama slides must join up). */
     showBorder: Boolean = true,
+    /** True in the editors for one item: a caption belongs to that item, not to all new media. */
+    showText: Boolean = false,
 ) {
     var tab by rememberSaveable { mutableStateOf(StyleTab.BACKGROUND) }
-    val tabs = StyleTab.entries.filter { showBorder || it != StyleTab.BORDER }
+    val tabs = StyleTab.entries.filter { (showBorder || it != StyleTab.BORDER) && (showText || it != StyleTab.TEXT) }
     val shown = if (tab in tabs) tab else tabs.first()
     SecondaryTabRow(
         selectedTabIndex = tabs.indexOf(shown),
@@ -136,6 +140,7 @@ fun StyleControls(
         StyleTab.BACKGROUND -> BackgroundControls(settings, onChange, photoColors, onPickFromPhoto)
         StyleTab.BORDER -> BorderControls(settings, onChange)
         StyleTab.ADJUST -> AdjustmentControls(settings, onChange, sample)
+        StyleTab.TEXT -> TextControls(settings, onChange, photoColors)
     }
 }
 
@@ -143,6 +148,7 @@ private enum class StyleTab(val title: String) {
     BACKGROUND("Background"),
     BORDER("Border"),
     ADJUST("Adjust"),
+    TEXT("Text"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -394,6 +400,96 @@ private fun lookThumbnailBase(sample: Bitmap?): Bitmap {
     }
     return base
 }
+
+/** The caption: words, font, size, colour, backdrop and where it sits. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TextControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit, photoColors: List<Int>) {
+    val overlay = settings.text ?: TextOverlay()
+    fun change(transform: TextOverlay.() -> TextOverlay) = onChange(settings.copy(text = overlay.transform()))
+
+    OutlinedTextField(
+        value = overlay.text,
+        onValueChange = { text -> change { copy(text = text.take(MAX_TEXT_LENGTH)) } },
+        label = { Text("Caption or title") },
+        placeholder = { Text("Type something…") },
+        minLines = 1,
+        maxLines = 4,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text("Font", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 10.dp))
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextFont.entries.forEach { font ->
+            FilterChip(
+                selected = overlay.font == font,
+                onClick = { change { copy(font = font) } },
+                // Each name is shown in its own font.
+                label = { Text(font.label, fontFamily = remember(font) { FontFamily(Typeface(font.typeface)) }) },
+            )
+        }
+    }
+    AdjustmentSlider("Size", overlay.size, 0f, 1f) { change { copy(size = it) } }
+    Text("Color", style = MaterialTheme.typography.labelMedium)
+    ColorChoices(selected = overlay.color, onSelect = { change { copy(color = it) } }, photoColors = photoColors)
+
+    Text("Behind the text", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 10.dp))
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        TextBackdrop.entries.forEachIndexed { i, backdrop ->
+            SegmentedButton(
+                selected = overlay.backdrop == backdrop,
+                onClick = { change { copy(backdrop = backdrop) } },
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = TextBackdrop.entries.size),
+                label = {
+                    Text(
+                        when (backdrop) {
+                            TextBackdrop.SHADOW -> "Shadow"
+                            TextBackdrop.BOX -> "Box"
+                            TextBackdrop.NONE -> "Nothing"
+                        }
+                    )
+                },
+            )
+        }
+    }
+    Text("Line up", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 10.dp))
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        TextAlignment.entries.forEachIndexed { i, alignment ->
+            SegmentedButton(
+                selected = overlay.alignment == alignment,
+                onClick = { change { copy(alignment = alignment) } },
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = TextAlignment.entries.size),
+                label = {
+                    Text(
+                        when (alignment) {
+                            TextAlignment.LEFT -> "Left"
+                            TextAlignment.CENTER -> "Center"
+                            TextAlignment.RIGHT -> "Right"
+                        }
+                    )
+                },
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Text("Height: ${heightLabel(overlay.position)}", style = MaterialTheme.typography.labelMedium)
+    Slider(value = overlay.position, onValueChange = { change { copy(position = it) } })
+    if (settings.text != null) {
+        TextButton(onClick = { onChange(settings.copy(text = null)) }) { Text("Remove text") }
+    }
+}
+
+private fun heightLabel(position: Float) = when {
+    position < 0.2f -> "top"
+    position > 0.8f -> "bottom"
+    position in 0.4f..0.6f -> "middle"
+    position < 0.5f -> "upper half"
+    else -> "lower half"
+}
+
+private const val MAX_TEXT_LENGTH = 200
 
 /** Preset swatches plus a custom colour; when editing one item also colours from its photo and an eyedropper. */
 @Composable

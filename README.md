@@ -25,6 +25,8 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   cell is filled (zoom, drag to pan) or fitted; with the Blurred style a fitted cell is padded
   with a blur of its own photo. Arrows or hold-and-drag swap photos between cells.
   Photo collages are saved 2160 px wide.
+- Text tab in each item's editor: a caption or title in one of 6 fonts, with size, colour,
+  shadow or box behind it, alignment and height. Looks don't affect it.
 - Panorama carousel: one wide photo (picked with "Collage", or "Split into carousel slides" in
   its edit sheet) becomes 2-10 slides that join up seamlessly when swiped; shared in order. With clips in it a collage is a video
   (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
@@ -53,6 +55,7 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `processing/PhotoProcessor.kt` | Padding to a format, backgrounds, border, colour/sharpen/grain |
 | `processing/CollageRenderer.kt` | Draws a collage from its cells' pictures |
 | `processing/PanoramaRenderer.kt` | Draws a panorama strip, or one slide of it |
+| `TextOverlay.kt`, `processing/TextRenderer.kt` | Captions: settings and drawing |
 | `processing/VideoProcessor.kt` | Single video: decode, pad each frame, encode, copy the sound |
 | `processing/VideoCollageProcessor.kt` | Video collage: one decoder per clip on a shared timeline |
 | `processing/GlFrameReader.kt` | Reads decoded frames back through OpenGL |

@@ -215,7 +215,12 @@ fun CollageEditor(
 
             Spacer(Modifier.height(8.dp))
             FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
-            StyleControls(settings = settings, onChange = { settings = it }, sample = collage.cells.firstNotNullOfOrNull { it.preview })
+            StyleControls(
+                settings = settings,
+                onChange = { settings = it },
+                sample = collage.cells.firstNotNullOfOrNull { it.preview },
+                showText = true,
+            )
 
             Spacer(Modifier.height(16.dp))
             Button(

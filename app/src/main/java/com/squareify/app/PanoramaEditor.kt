@@ -183,7 +183,7 @@ fun PanoramaEditor(
                 },
                 formats = Panorama.FORMATS,
             )
-            StyleControls(settings = settings, onChange = { settings = it }, sample = preview, showBorder = false)
+            StyleControls(settings = settings, onChange = { settings = it }, sample = preview, showBorder = false, showText = true)
 
             Spacer(Modifier.height(16.dp))
             Button(

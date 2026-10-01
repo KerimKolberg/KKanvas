@@ -58,6 +58,8 @@ data class FrameSettings(
     val blurStrength: Float = DEFAULT_BLUR_STRENGTH,
     val border: Border = Border(),
     val adjustments: Adjustments = Adjustments(),
+    /** A caption on this item only; never part of the settings for new media. */
+    val text: TextOverlay? = null,
 ) : Serializable {
     companion object {
         const val DEFAULT_BLUR_STRENGTH = 1f / 3
