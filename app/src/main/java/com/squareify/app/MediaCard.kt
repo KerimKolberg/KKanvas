@@ -2,7 +2,8 @@ package com.squareify.app
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -50,13 +53,26 @@ fun MediaCard(
     onRenderVideo: () -> Unit,
     onShare: () -> Unit,
     onRetry: () -> Unit,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelected: () -> Unit,
 ) {
+    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClickLabel = "Open preview", onClick = onOpen)
+            .then(
+                if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, shape) else Modifier
+            )
+            // Long-press starts selecting; while selecting, a tap toggles instead of opening.
+            .combinedClickable(
+                onClickLabel = if (selectionMode) "Select" else "Open preview",
+                onLongClickLabel = "Select",
+                onClick = if (selectionMode) onToggleSelected else onOpen,
+                onLongClick = onToggleSelected,
+            )
     ) {
         item.thumbnail?.let {
             Image(
@@ -186,39 +202,62 @@ fun MediaCard(
             }
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            // Without the original there's nothing to re-edit.
-            if (!item.originalTrashed) {
-                FilledIconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Tune, contentDescription = "Edit", modifier = Modifier.size(18.dp))
-                }
+        if (selectionMode) {
+            Icon(
+                if (selected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                contentDescription = if (selected) "Selected" else "Not selected",
+                tint = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (selected) Color.White else Color.Black.copy(alpha = 0.35f)),
+            )
+        } else {
+            CardActions(item, onEdit, onRemove, onShare, Modifier.align(Alignment.BottomEnd))
+        }
+    }
+}
+
+@Composable
+private fun CardActions(
+    item: MediaItem,
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+    onShare: () -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier = modifier.padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Without the original there's nothing to re-edit.
+        if (!item.originalTrashed) {
+            FilledIconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Tune, contentDescription = "Edit", modifier = Modifier.size(18.dp))
             }
-            if (item.isRendered) {
-                // Green = saved; tapping it shares the saved file.
-                val savedTo = if (item.isVideo) "Movies/Squareify" else "Pictures/Squareify"
-                FilledIconButton(
-                    onClick = onShare,
-                    modifier = Modifier.size(36.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Color(0xFF16A34A),
-                        contentColor = Color.White,
-                    ),
-                ) {
-                    Icon(
-                        Icons.Default.Share,
-                        contentDescription = "Saved to $savedTo. Share",
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+        }
+        if (item.isRendered) {
+            // Green = saved; tapping it shares the saved file.
+            val savedTo = if (item.isVideo) "Movies/Squareify" else "Pictures/Squareify"
+            FilledIconButton(
+                onClick = onShare,
+                modifier = Modifier.size(36.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = Color(0xFF16A34A),
+                    contentColor = Color.White,
+                ),
+            ) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "Saved to $savedTo. Share",
+                    modifier = Modifier.size(18.dp),
+                )
             }
-            FilledIconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = "Remove", modifier = Modifier.size(18.dp))
-            }
+        }
+        FilledIconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.Delete, contentDescription = "Remove", modifier = Modifier.size(18.dp))
         }
     }
 }

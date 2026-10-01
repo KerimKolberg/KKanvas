@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -36,12 +37,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -64,6 +71,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -109,8 +117,16 @@ fun SquarifyApp(viewModel: MainViewModel) {
     var settingsExpanded by rememberSaveable { mutableStateOf(true) }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmRemoveAll by remember { mutableStateOf(false) }
+    // The "move originals to trash" explanation; trashIds = null means all saved items.
     var confirmTrash by remember { mutableStateOf(false) }
+    var trashIds by remember { mutableStateOf<Set<String>?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+
+    val selectionMode = viewModel.selectedIds.isNotEmpty()
+    val selectedItems = items.filter { it.id in viewModel.selectedIds }
+    val savedItems = items.filter { it.isRendered && it.outputUri != null }
+
+    BackHandler(enabled = selectionMode) { viewModel.clearSelection() }
 
     // Android's own confirmation dialogs for moving to / restoring from / emptying the trash.
     val systemRequestLauncher = rememberLauncherForActivityResult(
@@ -142,68 +158,72 @@ fun SquarifyApp(viewModel: MainViewModel) {
         ActivityResultContracts.PickMultipleVisualMedia(20)
     ) { uris -> viewModel.addMedia(uris) }
 
-    val savedItems = items.filter { it.isRendered && it.outputUri != null }
-
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
-                actions = {
-                    if (savedItems.isNotEmpty()) {
-                        IconButton(onClick = { shareOutputs(context, savedItems) }) {
-                            Icon(Icons.Default.Share, contentDescription = "Share all saved")
+            if (selectionMode) {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel selection")
                         }
-                    }
-                    if (items.isNotEmpty() || viewModel.trash.isNotEmpty()) {
-                        Box {
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    },
+                    title = { Text("${selectedItems.size} selected") },
+                    actions = {
+                        IconButton(onClick = viewModel::selectAll) {
+                            Icon(Icons.Default.SelectAll, contentDescription = "Select all")
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.app_name)) },
+                    actions = {
+                        if (savedItems.isNotEmpty()) {
+                            IconButton(onClick = { shareOutputs(context, savedItems) }) {
+                                Icon(Icons.Default.Share, contentDescription = "Share all saved")
                             }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                val trashable = viewModel.trashableItems.size
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (trashable > 0) "Move $trashable original${if (trashable == 1) "" else "s"} to trash…"
-                                            else "Move originals to trash…"
-                                        )
-                                    },
-                                    enabled = trashable > 0,
-                                    onClick = {
-                                        menuOpen = false
+                        }
+                        if (items.isNotEmpty() || viewModel.trash.isNotEmpty()) {
+                            Box {
+                                IconButton(onClick = { menuOpen = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More")
+                                }
+                                MainMenu(
+                                    expanded = menuOpen,
+                                    onDismiss = { menuOpen = false },
+                                    trashableCount = viewModel.trashableItems().size,
+                                    trashCount = viewModel.trash.size,
+                                    canRemoveSaved = items.any { it.isRendered && !it.isProcessing },
+                                    canRemoveAll = items.isNotEmpty(),
+                                    onTrashOriginals = {
+                                        trashIds = null
                                         confirmTrash = true
                                     },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Recently deleted (${viewModel.trash.size})") },
-                                    onClick = {
-                                        menuOpen = false
-                                        showTrash = true
-                                    },
-                                )
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text("Remove saved items") },
-                                    enabled = items.any { it.isRendered && !it.isProcessing },
-                                    onClick = {
-                                        menuOpen = false
-                                        viewModel.removeSaved()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Remove all") },
-                                    enabled = items.isNotEmpty(),
-                                    onClick = {
-                                        menuOpen = false
-                                        confirmRemoveAll = true
-                                    },
+                                    onShowTrash = { showTrash = true },
+                                    onRemoveSaved = viewModel::removeSaved,
+                                    onRemoveAll = { confirmRemoveAll = true },
                                 )
                             }
                         }
-                    }
-                },
-            )
-        }
+                    },
+                )
+            }
+        },
+        bottomBar = {
+            if (selectionMode) {
+                val selectedSaved = selectedItems.filter { it.isRendered && it.outputUri != null }
+                SelectionBar(
+                    trashableCount = viewModel.trashableItems(viewModel.selectedIds).size,
+                    savedCount = selectedSaved.size,
+                    onTrashOriginals = {
+                        trashIds = viewModel.selectedIds
+                        confirmTrash = true
+                    },
+                    onShare = { shareOutputs(context, selectedSaved) },
+                    onRemove = viewModel::removeSelected,
+                )
+            }
+        },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -227,7 +247,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
 
             // Videos only render on request.
             val pendingVideos = items.count { it.isVideo && !it.isRendered && !it.isProcessing }
-            if (pendingVideos > 0) {
+            if (pendingVideos > 0 && !selectionMode) {
                 FilledTonalButton(
                     onClick = viewModel::renderAllVideos,
                     modifier = Modifier
@@ -264,6 +284,9 @@ fun SquarifyApp(viewModel: MainViewModel) {
                             onRenderVideo = { viewModel.renderVideo(item.id) },
                             onShare = { shareOutputs(context, listOf(item)) },
                             onRetry = { viewModel.retry(item.id) },
+                            selectionMode = selectionMode,
+                            selected = item.id in viewModel.selectedIds,
+                            onToggleSelected = { viewModel.toggleSelected(item.id) },
                         )
                     }
                 }
@@ -287,7 +310,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
     }
 
     if (confirmTrash) {
-        val count = viewModel.trashableItems.size
+        val count = viewModel.trashableItems(trashIds).size
         AlertDialog(
             onDismissRequest = { confirmTrash = false },
             title = { Text("Move $count original${if (count == 1) "" else "s"} to the trash?") },
@@ -302,7 +325,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
             confirmButton = {
                 TextButton(onClick = {
                     confirmTrash = false
-                    confirmWithAndroid(viewModel.requestTrashOriginals())
+                    confirmWithAndroid(viewModel.requestTrashOriginals(trashIds))
                 }) { Text("Move to trash") }
             },
             dismissButton = { TextButton(onClick = { confirmTrash = false }) { Text("Cancel") } },
@@ -327,6 +350,84 @@ fun SquarifyApp(viewModel: MainViewModel) {
     }
     items.firstOrNull { it.id == previewItemId }?.let { item ->
         PreviewDialog(item = item, onDismiss = { previewItemId = null })
+    }
+}
+
+@Composable
+private fun MainMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    trashableCount: Int,
+    trashCount: Int,
+    canRemoveSaved: Boolean,
+    canRemoveAll: Boolean,
+    onTrashOriginals: () -> Unit,
+    onShowTrash: () -> Unit,
+    onRemoveSaved: () -> Unit,
+    onRemoveAll: () -> Unit,
+) {
+    fun item(action: () -> Unit): () -> Unit = {
+        onDismiss()
+        action()
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = {
+                Text(
+                    if (trashableCount > 0) {
+                        "Move $trashableCount original${if (trashableCount == 1) "" else "s"} to trash…"
+                    } else {
+                        "Move originals to trash…"
+                    }
+                )
+            },
+            enabled = trashableCount > 0,
+            onClick = item(onTrashOriginals),
+        )
+        DropdownMenuItem(text = { Text("Recently deleted ($trashCount)") }, onClick = item(onShowTrash))
+        HorizontalDivider()
+        DropdownMenuItem(text = { Text("Remove saved items") }, enabled = canRemoveSaved, onClick = item(onRemoveSaved))
+        DropdownMenuItem(text = { Text("Remove all") }, enabled = canRemoveAll, onClick = item(onRemoveAll))
+    }
+}
+
+/** Actions for the items picked by long-press. */
+@Composable
+private fun SelectionBar(
+    trashableCount: Int,
+    savedCount: Int,
+    onTrashOriginals: () -> Unit,
+    onShare: () -> Unit,
+    onRemove: () -> Unit,
+    onCollage: (() -> Unit)? = null,
+) {
+    BottomAppBar {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            if (onCollage != null) {
+                SelectionAction(Icons.Default.Dashboard, "Collage", enabled = true, onClick = onCollage)
+            }
+            SelectionAction(Icons.Default.Share, "Share", enabled = savedCount > 0, onClick = onShare)
+            SelectionAction(
+                Icons.Default.DeleteSweep,
+                if (trashableCount > 0) "Trash $trashableCount original${if (trashableCount == 1) "" else "s"}" else "Trash originals",
+                enabled = trashableCount > 0,
+                onClick = onTrashOriginals,
+            )
+            SelectionAction(Icons.Default.RemoveCircleOutline, "Remove", enabled = true, onClick = onRemove)
+        }
+    }
+}
+
+@Composable
+private fun SelectionAction(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, enabled = enabled) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null)
+            Text(label, style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 

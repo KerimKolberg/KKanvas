@@ -41,12 +41,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var trash by mutableStateOf(TrashStore.load(application).sortedByDescending { it.trashedAt })
         private set
 
-    /** Saved items whose original can still be moved to the trash. */
-    val trashableItems: List<MediaItem>
-        get() = items.filter {
-            it.isRendered && !it.isProcessing && !it.originalTrashed &&
+    /** Items picked by long-press for a batch action (trash originals, share, remove, collage). */
+    var selectedIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    /** Saved items (all, or only those in [ids]) whose original can still be moved to the trash. */
+    fun trashableItems(ids: Set<String>? = null): List<MediaItem> =
+        items.filter {
+            (ids == null || it.id in ids) &&
+                it.isRendered && !it.isProcessing && !it.originalTrashed &&
                 mediaStoreUri(context, it.sourceUri, it.isVideo) != null
         }
+
+    fun toggleSelected(id: String) {
+        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    }
+
+    fun selectAll() {
+        selectedIds = items.map { it.id }.toSet()
+    }
+
+    fun clearSelection() {
+        selectedIds = emptySet()
+    }
+
+    fun removeSelected() {
+        items = items.filter { it.id !in selectedIds }
+        clearSelection()
+    }
 
     /** A trash / restore / delete that Android is asking the user to confirm. */
     private var pendingRequest: PendingRequest? = null
@@ -179,8 +201,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Asks Android to move the originals of all saved items to the trash (deleted for good after
      * 30 days). Returns the confirmation to show, or null if there's nothing to do.
      */
-    fun requestTrashOriginals(): IntentSender? {
-        val targets = trashableItems
+    fun requestTrashOriginals(ids: Set<String>? = null): IntentSender? {
+        val targets = trashableItems(ids)
         if (targets.isEmpty()) return null
         val uris = targets.map { mediaStoreUri(context, it.sourceUri, it.isVideo)!! }
         return systemRequest(PendingRequest.Trash(targets.map { it.id }, uris)) {
@@ -219,6 +241,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val trashed = request.itemIds.zip(request.uris)
                     .mapNotNull { (id, uri) -> items.firstOrNull { it.id == id }?.let { it to uri } }
                 items = items.map { if (it.id in request.itemIds) it.copy(originalTrashed = true) else it }
+                selectedIds = selectedIds - request.itemIds.toSet()
                 viewModelScope.launch {
                     val now = System.currentTimeMillis()
                     val entries = withContext(Dispatchers.IO) {
