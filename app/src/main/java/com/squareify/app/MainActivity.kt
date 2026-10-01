@@ -1,8 +1,10 @@
 package com.squareify.app
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -11,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -44,6 +47,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -105,6 +109,16 @@ fun SquarifyApp(viewModel: MainViewModel) {
     var settingsExpanded by rememberSaveable { mutableStateOf(true) }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmRemoveAll by remember { mutableStateOf(false) }
+    var confirmTrash by remember { mutableStateOf(false) }
+    var showTrash by rememberSaveable { mutableStateOf(false) }
+
+    // Android's own confirmation dialogs for moving to / restoring from / emptying the trash.
+    val systemRequestLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result -> viewModel.onSystemRequestResult(result.resultCode == Activity.RESULT_OK) }
+    fun confirmWithAndroid(request: IntentSender?) {
+        request?.let { systemRequestLauncher.launch(IntentSenderRequest.Builder(it).build()) }
+    }
 
     // Needed for the render progress notification on Android 13+. Rendering works without it.
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -140,12 +154,34 @@ fun SquarifyApp(viewModel: MainViewModel) {
                             Icon(Icons.Default.Share, contentDescription = "Share all saved")
                         }
                     }
-                    if (items.isNotEmpty()) {
+                    if (items.isNotEmpty() || viewModel.trash.isNotEmpty()) {
                         Box {
                             IconButton(onClick = { menuOpen = true }) {
                                 Icon(Icons.Default.MoreVert, contentDescription = "More")
                             }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                val trashable = viewModel.trashableItems.size
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (trashable > 0) "Move $trashable original${if (trashable == 1) "" else "s"} to trash…"
+                                            else "Move originals to trash…"
+                                        )
+                                    },
+                                    enabled = trashable > 0,
+                                    onClick = {
+                                        menuOpen = false
+                                        confirmTrash = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Recently deleted (${viewModel.trash.size})") },
+                                    onClick = {
+                                        menuOpen = false
+                                        showTrash = true
+                                    },
+                                )
+                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Remove saved items") },
                                     enabled = items.any { it.isRendered && !it.isProcessing },
@@ -156,6 +192,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Remove all") },
+                                    enabled = items.isNotEmpty(),
                                     onClick = {
                                         menuOpen = false
                                         confirmRemoveAll = true
@@ -246,6 +283,38 @@ fun SquarifyApp(viewModel: MainViewModel) {
                 }) { Text("Remove all") }
             },
             dismissButton = { TextButton(onClick = { confirmRemoveAll = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (confirmTrash) {
+        val count = viewModel.trashableItems.size
+        AlertDialog(
+            onDismissRequest = { confirmTrash = false },
+            title = { Text("Move $count original${if (count == 1) "" else "s"} to the trash?") },
+            text = {
+                Text(
+                    "Their squared versions are saved, so the original photos and videos can go. " +
+                        "They move to the phone's trash and are deleted for good after 30 days. " +
+                        "Until then you can restore them under ⋮ → Recently deleted.\n\n" +
+                        "Android will ask you to confirm next."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmTrash = false
+                    confirmWithAndroid(viewModel.requestTrashOriginals())
+                }) { Text("Move to trash") }
+            },
+            dismissButton = { TextButton(onClick = { confirmTrash = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showTrash) {
+        RecentlyDeletedSheet(
+            entries = viewModel.trash,
+            onRestore = { confirmWithAndroid(viewModel.requestRestore(it)) },
+            onDeleteForever = { confirmWithAndroid(viewModel.requestDeleteForever(it)) },
+            onDismiss = { showTrash = false },
         )
     }
 

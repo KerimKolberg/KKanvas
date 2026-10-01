@@ -1,7 +1,10 @@
 package com.squareify.app
 
 import android.app.Application
+import android.app.PendingIntent
+import android.content.IntentSender
 import android.net.Uri
+import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.getValue
@@ -33,6 +36,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** True while picked or shared media are being loaded. */
     var isProcessing by mutableStateOf(false)
         private set
+
+    /** Originals this app moved to the phone's trash, newest first ("Recently deleted"). */
+    var trash by mutableStateOf(TrashStore.load(application).sortedByDescending { it.trashedAt })
+        private set
+
+    /** Saved items whose original can still be moved to the trash. */
+    val trashableItems: List<MediaItem>
+        get() = items.filter {
+            it.isRendered && !it.isProcessing && !it.originalTrashed &&
+                mediaStoreUri(context, it.sourceUri, it.isVideo) != null
+        }
+
+    /** A trash / restore / delete that Android is asking the user to confirm. */
+    private var pendingRequest: PendingRequest? = null
+
+    private sealed interface PendingRequest {
+        data class Trash(val itemIds: List<String>, val uris: List<Uri>) : PendingRequest
+        data class Restore(val entries: List<TrashedOriginal>) : PendingRequest
+        data class DeleteForever(val entries: List<TrashedOriginal>) : PendingRequest
+    }
 
     private var saveSettingsJob: Job? = null
 
@@ -150,6 +173,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun removeAll() {
         items = emptyList()
+    }
+
+    /**
+     * Asks Android to move the originals of all saved items to the trash (deleted for good after
+     * 30 days). Returns the confirmation to show, or null if there's nothing to do.
+     */
+    fun requestTrashOriginals(): IntentSender? {
+        val targets = trashableItems
+        if (targets.isEmpty()) return null
+        val uris = targets.map { mediaStoreUri(context, it.sourceUri, it.isVideo)!! }
+        return systemRequest(PendingRequest.Trash(targets.map { it.id }, uris)) {
+            MediaStore.createTrashRequest(context.contentResolver, uris, true)
+        }
+    }
+
+    fun requestRestore(entries: List<TrashedOriginal>): IntentSender? =
+        systemRequest(PendingRequest.Restore(entries)) {
+            MediaStore.createTrashRequest(context.contentResolver, entries.map { it.uri }, false)
+        }
+
+    fun requestDeleteForever(entries: List<TrashedOriginal>): IntentSender? =
+        systemRequest(PendingRequest.DeleteForever(entries)) {
+            MediaStore.createDeleteRequest(context.contentResolver, entries.map { it.uri })
+        }
+
+    private fun systemRequest(request: PendingRequest, create: () -> PendingIntent): IntentSender? =
+        try {
+            val intent = create()
+            pendingRequest = request
+            intent.intentSender
+        } catch (e: Exception) {
+            Log.w(TAG, "Android refused $request", e)
+            Toast.makeText(context, "That didn't work: ${e.message ?: e}", Toast.LENGTH_LONG).show()
+            null
+        }
+
+    /** The user answered Android's confirmation for the last request. */
+    fun onSystemRequestResult(approved: Boolean) {
+        val request = pendingRequest ?: return
+        pendingRequest = null
+        if (!approved) return
+        when (request) {
+            is PendingRequest.Trash -> {
+                val trashed = request.itemIds.zip(request.uris)
+                    .mapNotNull { (id, uri) -> items.firstOrNull { it.id == id }?.let { it to uri } }
+                items = items.map { if (it.id in request.itemIds) it.copy(originalTrashed = true) else it }
+                viewModelScope.launch {
+                    val now = System.currentTimeMillis()
+                    val entries = withContext(Dispatchers.IO) {
+                        trashed.map { (item, uri) ->
+                            TrashedOriginal(uri, item.displayName, item.isVideo, now, TrashStore.saveThumbnail(context, uri, item.preview))
+                        }
+                    }
+                    storeTrash(entries + trash)
+                    val n = entries.size
+                    Toast.makeText(context, "Moved $n original${if (n == 1) "" else "s"} to the trash", Toast.LENGTH_SHORT).show()
+                }
+            }
+            is PendingRequest.Restore -> {
+                val restored = request.entries.map { it.uri }.toSet()
+                items = items.map {
+                    if (it.originalTrashed && mediaStoreUri(context, it.sourceUri, it.isVideo) in restored) {
+                        it.copy(originalTrashed = false)
+                    } else {
+                        it
+                    }
+                }
+                removeFromTrash(request.entries)
+            }
+            is PendingRequest.DeleteForever -> removeFromTrash(request.entries)
+        }
+    }
+
+    private fun removeFromTrash(entries: List<TrashedOriginal>) {
+        entries.forEach { TrashStore.deleteThumbnail(it) }
+        val gone = entries.map { it.uri }.toSet()
+        storeTrash(trash.filter { it.uri !in gone })
+    }
+
+    private fun storeTrash(entries: List<TrashedOriginal>) {
+        trash = entries
+        TrashStore.save(context, entries)
     }
 
     /** Renders the photo in its format and saves it to Pictures/Squareify. */

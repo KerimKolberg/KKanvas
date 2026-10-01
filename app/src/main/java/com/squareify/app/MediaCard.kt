@@ -167,14 +167,36 @@ fun MediaCard(
             }
         }
 
+        if (item.originalTrashed) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.6f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Original moved to the trash",
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.White,
+                )
+            }
+        }
+
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            FilledIconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Tune, contentDescription = "Edit", modifier = Modifier.size(18.dp))
+            // Without the original there's nothing to re-edit.
+            if (!item.originalTrashed) {
+                FilledIconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Tune, contentDescription = "Edit", modifier = Modifier.size(18.dp))
+                }
             }
             if (item.isRendered) {
                 // Green = saved; tapping it shares the saved file.

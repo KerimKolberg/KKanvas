@@ -75,4 +75,6 @@ data class MediaItem(
     val error: String? = null,
     /** Saved, but with a caveat, e.g. the audio couldn't be copied. */
     val warning: String? = null,
+    /** The original was moved to the phone's trash after the result was saved. */
+    val originalTrashed: Boolean = false,
 )
