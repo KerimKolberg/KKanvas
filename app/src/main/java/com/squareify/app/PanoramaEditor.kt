@@ -86,12 +86,14 @@ fun PanoramaEditor(
             }
         }?.let { source = it }
     }
-    // Carousels can't be 9:16; Instagram would crop the slides.
-    var settings by remember {
-        mutableStateOf(initialSettings.copy(format = initialSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT))
-    }
     fun auto(format: FrameFormat): Int = source?.let { Panorama.autoSlides(it.width, it.height, format) } ?: 3
-    var panorama by remember { mutableStateOf(initialPanorama ?: Panorama(auto(settings.format))) }
+    val history = remember {
+        // Carousels can't be 9:16; Instagram would crop the slides.
+        val start = initialSettings.copy(format = initialSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT)
+        EditHistory((initialPanorama ?: Panorama(auto(start.format))) to start)
+    }
+    var panorama by history.part({ it.first }, { state, p -> state.copy(first = p) })
+    var settings by history.part({ it.second }, { state, s -> state.copy(second = s) })
     var rendered by remember { mutableStateOf<Bitmap?>(null) }
     var previewing by remember { mutableStateOf(false) }
 
@@ -110,7 +112,10 @@ fun PanoramaEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            Text(if (isNew) "Carousel slides" else "Edit slides", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (isNew) "Carousel slides" else "Edit slides", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                UndoRedoButtons(history)
+            }
             Spacer(Modifier.height(8.dp))
 
             SlideStrip(rendered = rendered, slides = panorama.slides, format = settings.format)

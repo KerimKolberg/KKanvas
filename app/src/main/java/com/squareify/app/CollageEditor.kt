@@ -94,8 +94,9 @@ fun CollageEditor(
     onDismiss: () -> Unit,
     onApply: (Collage, FrameSettings) -> Unit,
 ) {
-    var collage by remember { mutableStateOf(initialCollage) }
-    var settings by remember { mutableStateOf(initialSettings) }
+    val history = remember { EditHistory(initialCollage to initialSettings) }
+    var collage by history.part({ it.first }, { state, c -> state.copy(first = c) })
+    var settings by history.part({ it.second }, { state, s -> state.copy(second = s) })
     var selectedCell by remember { mutableStateOf<Int?>(null) }
     var rendered by remember { mutableStateOf<Bitmap?>(null) }
     // A filled cell being moved or zoomed: drawn straight onto the preview, so it follows the
@@ -161,13 +162,15 @@ fun CollageEditor(
         val found = withContext(Dispatchers.Default) {
             todo.associate { cell -> cell.sourceUri to (FaceFinder.focus(cell.preview!!) ?: PointF(0.5f, 0.5f)) }
         }
-        // Applied to the cells as they are now: they may have been moved around meanwhile.
-        collage = collage.copy(
+        // Applied to the cells as they are now: they may have been moved around meanwhile. Not an
+        // undo step of its own: undo shouldn't take the faces away.
+        val withFaces = collage.copy(
             cells = collage.cells.map { cell ->
                 val focus = found[cell.sourceUri]
                 if (focus != null && cell.focusX == null) cell.copy(focusX = focus.x, focusY = focus.y) else cell
             },
         )
+        history.set(history.value.copy(first = withFaces), record = false)
     }
 
     ModalBottomSheet(
@@ -179,7 +182,10 @@ fun CollageEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            Text(if (isNew) "New collage" else "Edit collage", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (isNew) "New collage" else "Edit collage", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                UndoRedoButtons(history)
+            }
             Spacer(Modifier.height(8.dp))
 
             CollagePreview(

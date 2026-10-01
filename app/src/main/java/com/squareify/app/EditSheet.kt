@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,7 +62,8 @@ fun EditSheet(
     /** Opens the panorama editor for this photo; null for videos. */
     onSplitIntoSlides: (() -> Unit)? = null,
 ) {
-    var settings by remember { mutableStateOf(item.settings) }
+    val history = remember { EditHistory(item.settings) }
+    var settings by history.part({ it }, { _, s -> s })
     var rendered by remember { mutableStateOf(item.thumbnail) }
     var showOriginal by remember { mutableStateOf(false) }
     // Set while the eyedropper is active: which colour a tap on the photo fills in.
@@ -96,12 +98,16 @@ fun EditSheet(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
         ) {
-            Text(
-                "Edit: ${item.displayName}",
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Edit: ${item.displayName}",
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                UndoRedoButtons(history)
+            }
             Spacer(Modifier.height(8.dp))
 
             val picking = pickingSlot != null

@@ -97,10 +97,11 @@ fun CarouselEditor(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var carousel by remember { mutableStateOf(initialCarousel) }
-    var settings by remember {
-        mutableStateOf(initialSettings.copy(format = initialSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT))
+    val history = remember {
+        EditHistory(initialCarousel to initialSettings.copy(format = initialSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT))
     }
+    var carousel by history.part({ it.first }, { state, c -> state.copy(first = c) })
+    var settings by history.part({ it.second }, { state, s -> state.copy(second = s) })
     var selected by remember { mutableStateOf<Int?>(null) }
     var guides by remember { mutableStateOf<Snapped?>(null) }
     var previewing by remember { mutableStateOf(false) }
@@ -137,7 +138,10 @@ fun CarouselEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
         ) {
-            Text(if (isNew) "New carousel" else "Edit carousel", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (isNew) "New carousel" else "Edit carousel", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                UndoRedoButtons(history)
+            }
             Spacer(Modifier.height(8.dp))
 
             CarouselCanvas(

@@ -52,10 +52,11 @@
   Reels / Chats choice; slides go together as one carousel) or the usual share sheet.
 - Gradient direction: top to bottom, left to right or diagonal; on carousels and panoramas it
   runs across all the slides.
+- Undo / redo in every editor (photo/video, collage, panorama, carousel); a drag is one step.
 
 ## Next
 1. Photo shapes (circle, arch, pill, torn edge); stickers / overlays drawn in-app; per-photo
-   edits inside collages; undo/redo.
+   edits inside collages.
 2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
