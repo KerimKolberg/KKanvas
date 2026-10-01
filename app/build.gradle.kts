@@ -17,6 +17,7 @@ android {
         targetSdk = 34
         versionCode = 2
         versionName = "1.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -52,4 +53,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

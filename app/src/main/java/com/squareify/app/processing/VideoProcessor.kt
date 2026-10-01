@@ -2,9 +2,6 @@ package com.squareify.app.processing
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.PixelFormat
-import android.media.Image
-import android.media.ImageReader
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
@@ -15,14 +12,11 @@ import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
-import android.view.PixelCopy
 import com.squareify.app.FrameSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -35,6 +29,8 @@ object VideoProcessor {
     private const val TAG = "VideoProcessor"
     private const val TIMEOUT_US = 10_000L
     private const val I_FRAME_INTERVAL = 2
+    /** How long to wait for a rendered frame before repeating the previous one. */
+    private const val FRAME_TIMEOUT_MS = 2_500L
 
     data class Probe(
         val durationUs: Long,
@@ -119,7 +115,9 @@ object VideoProcessor {
                     maybeStartMuxer()
                 } else if (outIndex >= 0) {
                     val encodedData = encoder.getOutputBuffer(outIndex)
-                    if (bufferInfo.size > 0 && encodedData != null && muxerStarted) {
+                    // Codec config (SPS/PPS) already reached the muxer via the output format.
+                    val isConfig = bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                    if (bufferInfo.size > 0 && !isConfig && encodedData != null && muxerStarted) {
                         encodedData.position(bufferInfo.offset)
                         encodedData.limit(bufferInfo.offset + bufferInfo.size)
                         muxer.writeSampleData(muxerVideoTrack, encodedData, bufferInfo)
@@ -149,7 +147,6 @@ object VideoProcessor {
                 context,
                 sourceUri,
                 probe.videoTrackIndex,
-                probe.rotationDegrees,
                 displayWidth,
                 displayHeight,
             ) { bitmap, ptsUs ->
@@ -210,7 +207,6 @@ object VideoProcessor {
         context: Context,
         sourceUri: Uri,
         videoTrackIndex: Int,
-        rotationDegrees: Int,
         displayWidth: Int,
         displayHeight: Int,
         onFrame: (Bitmap, Long) -> Unit,
@@ -221,17 +217,6 @@ object VideoProcessor {
         val format = extractor.getTrackFormat(videoTrackIndex)
         val mime = format.getString(MediaFormat.KEY_MIME)
             ?: throw IllegalStateException("no mime for video track")
-
-        // The decoder outputs frames in the stream's stored (unrotated) orientation.
-        val rawWidth = when (rotationDegrees) {
-            90, 270 -> displayHeight
-            else -> displayWidth
-        }
-        val rawHeight = when (rotationDegrees) {
-            90, 270 -> displayWidth
-            else -> displayHeight
-        }
-        val imageReader = ImageReader.newInstance(rawWidth, rawHeight, PixelFormat.RGBA_8888, 3)
 
         val decoder = try {
             MediaCodec.createDecoderByType(mime)
@@ -247,18 +232,20 @@ object VideoProcessor {
         } catch (e: Exception) {
             Log.w(TAG, "could not request SDR color transfer ($e)")
         }
-        decoder.configure(format, imageReader.surface, null, 0)
-        decoder.start()
+        // Frame-available callbacks need their own thread; the GL work happens on this one.
+        val frameThread = HandlerThread("VideoProcessor-Frames")
+        frameThread.start()
+        val reader = GlFrameReader(displayWidth, displayHeight, Handler(frameThread.looper))
 
         val bufferInfo = MediaCodec.BufferInfo()
-        val pixelCopyThread = HandlerThread("VideoProcessor-PixelCopy")
-        pixelCopyThread.start()
-        val pixelCopyHandler = Handler(pixelCopyThread.looper)
         var lastGoodBitmap: Bitmap? = null
         var inputDone = false
         var outputDone = false
 
         try {
+            // The format carries the rotation; the decoder applies it to what it renders.
+            decoder.configure(format, reader.surface, null, 0)
+            decoder.start()
             while (!outputDone) {
                 if (!inputDone) {
                     val inIndex = decoder.dequeueInputBuffer(TIMEOUT_US)
@@ -282,23 +269,22 @@ object VideoProcessor {
                     val shouldRender = bufferInfo.size > 0
                     decoder.releaseOutputBuffer(outIndex, shouldRender)
                     if (shouldRender) {
-                        val captured = acquireBitmapViaPixelCopy(
-                            imageReader, displayWidth, displayHeight, pixelCopyHandler
-                        )
-                        if (captured == null) {
-                            Log.w(
-                                TAG,
-                                "frame capture failed after retries at pts=${bufferInfo.presentationTimeUs}; " +
-                                    "duplicating previous frame"
-                            )
+                        val pts = bufferInfo.presentationTimeUs
+                        val captured = if (reader.awaitFrame(FRAME_TIMEOUT_MS)) {
+                            val (bitmap, frameTimeUs) = reader.readFrame()
+                            if (frameTimeUs != pts) Log.w(TAG, "expected the frame at $pts µs, got $frameTimeUs µs")
+                            bitmap
+                        } else {
+                            Log.w(TAG, "no frame from the decoder at pts=$pts; repeating the previous frame")
+                            null
                         }
-                        // Reuse the previous frame on a failed capture so timing stays intact.
+                        // Reuse the previous frame if one goes missing, so timing stays intact.
                         val frameBitmap = captured ?: lastGoodBitmap
                         if (frameBitmap != null) {
-                            onFrame(frameBitmap, bufferInfo.presentationTimeUs)
+                            onFrame(frameBitmap, pts)
                         }
                         if (captured != null) {
-                            if (lastGoodBitmap !== captured) lastGoodBitmap?.recycle()
+                            lastGoodBitmap?.recycle()
                             lastGoodBitmap = captured
                         }
                     }
@@ -309,57 +295,16 @@ object VideoProcessor {
             }
         } finally {
             lastGoodBitmap?.recycle()
-            decoder.stop()
+            try {
+                decoder.stop()
+            } catch (_: IllegalStateException) {
+                // Never started (configure failed).
+            }
             decoder.release()
-            imageReader.close()
+            reader.release()
             extractor.release()
-            pixelCopyThread.quitSafely()
+            frameThread.quitSafely()
         }
-    }
-
-    /**
-     * Waits for the decoded frame to reach [reader], then copies the surface into an ARGB
-     * bitmap of the display size with PixelCopy.
-     */
-    private fun acquireBitmapViaPixelCopy(
-        reader: ImageReader,
-        width: Int,
-        height: Int,
-        handler: Handler,
-    ): Bitmap? {
-        var image: Image? = null
-        var attempts = 0
-        while (image == null && attempts < 50) {
-            image = reader.acquireLatestImage()
-            if (image == null) {
-                Thread.sleep(2)
-                attempts++
-            }
-        }
-        if (image == null) {
-            Log.w(TAG, "acquireBitmapViaPixelCopy: no image available after $attempts attempts")
-            return null
-        }
-        image.close()
-
-        repeat(5) { attempt ->
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val latch = CountDownLatch(1)
-            var resultCode = -1
-            PixelCopy.request(reader.surface, bitmap, { copyResult ->
-                resultCode = copyResult
-                latch.countDown()
-            }, handler)
-            val completed = latch.await(2, TimeUnit.SECONDS)
-            if (completed && resultCode == PixelCopy.SUCCESS) return bitmap
-            if (!completed) {
-                Log.w(TAG, "PixelCopy timed out (attempt ${attempt + 1})")
-            } else {
-                Log.w(TAG, "PixelCopy failed with result=$resultCode (attempt ${attempt + 1})")
-            }
-            Thread.sleep(5)
-        }
-        return null
     }
 
     private fun remuxAudio(
