@@ -39,11 +39,21 @@ data class Adjustments(
     val vignette: Float = 0f,
 ) : Serializable
 
+/** A frame drawn around a single photo or video, inside the padding. */
+enum class FrameStyle(val label: String) {
+    NONE("None"),
+    THIN("Thin border"),
+    POLAROID("Polaroid"),
+    FILM("Film strip"),
+}
+
 /** Space and decoration around the photo. Each value is 0–1; [PhotoProcessor] maps them to sizes. */
 data class Border(
     val margin: Float = 0f,
     val cornerRadius: Float = 0f,
     val shadow: Float = 0f,
+    /** With a frame, the corners and shadow belong to the frame. */
+    val frame: FrameStyle = FrameStyle.NONE,
 ) : Serializable
 
 /** How an item is padded and adjusted. The defaults for new items are saved by [SettingsStore]. */

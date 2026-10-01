@@ -14,7 +14,7 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   (e.g. to Instagram) from the green button on each card or "Share all" in the top bar.
 - Backgrounds: solid colour (presets, custom picker, colours from the photo, eyedropper),
   two-colour gradient, or blurred with adjustable strength. Border: margin, rounded
-  corners, shadow.
+  corners, shadow. Frames: thin white border, Polaroid, film strip.
 - Live preview while editing, full-screen preview on tap; hold either to see the original.
 - Saving again after an edit overwrites the earlier file instead of adding a copy.
 - The settings for new media are remembered between launches; the grid survives rotation.

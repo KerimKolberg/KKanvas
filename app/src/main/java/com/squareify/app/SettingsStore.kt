@@ -14,6 +14,7 @@ object SettingsStore {
     private const val KEY_MARGIN = "margin"
     private const val KEY_CORNER_RADIUS = "cornerRadius"
     private const val KEY_SHADOW = "shadow"
+    private const val KEY_FRAME_STYLE = "frameStyle"
     private const val KEY_BRIGHTNESS = "brightness"
     private const val KEY_SATURATION = "saturation"
     private const val KEY_SHARPNESS = "sharpness"
@@ -40,6 +41,9 @@ object SettingsStore {
                 margin = prefs.getFloat(KEY_MARGIN, defaults.border.margin),
                 cornerRadius = prefs.getFloat(KEY_CORNER_RADIUS, defaults.border.cornerRadius),
                 shadow = prefs.getFloat(KEY_SHADOW, defaults.border.shadow),
+                frame = prefs.getString(KEY_FRAME_STYLE, null)
+                    ?.let { name -> FrameStyle.entries.firstOrNull { it.name == name } }
+                    ?: defaults.border.frame,
             ),
             adjustments = Adjustments(
                 brightness = prefs.getFloat(KEY_BRIGHTNESS, defaults.adjustments.brightness),
@@ -64,6 +68,7 @@ object SettingsStore {
             putFloat(KEY_MARGIN, settings.border.margin)
             putFloat(KEY_CORNER_RADIUS, settings.border.cornerRadius)
             putFloat(KEY_SHADOW, settings.border.shadow)
+            putString(KEY_FRAME_STYLE, settings.border.frame.name)
             putFloat(KEY_BRIGHTNESS, settings.adjustments.brightness)
             putFloat(KEY_SATURATION, settings.adjustments.saturation)
             putFloat(KEY_SHARPNESS, settings.adjustments.sharpness)

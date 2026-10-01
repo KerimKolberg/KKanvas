@@ -22,6 +22,7 @@ import com.squareify.app.Adjustments
 import com.squareify.app.Border
 import com.squareify.app.FrameFormat
 import com.squareify.app.FrameSettings
+import com.squareify.app.FrameStyle
 import com.squareify.app.PaddingStyle
 import kotlin.math.ceil
 import kotlin.math.max
@@ -88,8 +89,36 @@ object PhotoProcessor {
     /** Rounds up, ignoring float noise (1250.0000047 is 1250, not 1251). */
     private fun ceilTolerant(value: Double): Int = ceil(value - 1e-4).toInt()
 
-    fun canvasSize(width: Int, height: Int, settings: FrameSettings): Pair<Int, Int> =
-        canvasSize(width, height, settings.format, settings.border.margin * MAX_MARGIN)
+    /** The canvas for a [width] x [height] photo, with room for its frame style and margin. */
+    fun canvasSize(width: Int, height: Int, settings: FrameSettings): Pair<Int, Int> {
+        val frame = frameInsets(settings.border.frame, width.toFloat(), height.toFloat())
+        return canvasSize(
+            (width + frame.left + frame.right).roundToInt(),
+            (height + frame.top + frame.bottom).roundToInt(),
+            settings.format,
+            settings.border.margin * MAX_MARGIN,
+        )
+    }
+
+    /**
+     * How far a frame style reaches beyond a [photoWidth] x [photoHeight] photo on each side,
+     * in pixels; it scales with the photo's shorter side.
+     */
+    private fun frameInsets(style: FrameStyle, photoWidth: Float, photoHeight: Float): RectF {
+        val s = min(photoWidth, photoHeight)
+        return when (style) {
+            FrameStyle.NONE -> RectF()
+            FrameStyle.THIN -> RectF(0.035f * s, 0.035f * s, 0.035f * s, 0.035f * s)
+            // The classic deep bottom edge, for writing on.
+            FrameStyle.POLAROID -> RectF(0.06f * s, 0.06f * s, 0.06f * s, 0.26f * s)
+            // Sprocket bands along the long sides, like a strip of 35 mm film.
+            FrameStyle.FILM -> if (photoWidth >= photoHeight) {
+                RectF(0.03f * s, 0.17f * s, 0.03f * s, 0.17f * s)
+            } else {
+                RectF(0.17f * s, 0.03f * s, 0.17f * s, 0.03f * s)
+            }
+        }
+    }
 
     /** Pads [source] to its format at natural resolution (capped at [MAX_OUTPUT_PIXELS]). */
     fun frame(source: Bitmap, settings: FrameSettings): Bitmap {
@@ -126,10 +155,97 @@ object PhotoProcessor {
         val canvas = Canvas(output)
 
         drawBackground(canvas, source, settings, width, height)
-        val photo = photoRect(source, marginInset(settings, width, height), width, height)
-        drawImage(canvas, source, fullRect(source), photo, settings.border)
+        val inset = marginInset(settings, width, height)
+        val border = settings.border
+        val frame = frameInsets(border.frame, source.width.toFloat(), source.height.toFloat())
+        // The photo plus its frame, as large as fits inside the margin, centred.
+        val outer = fitCentered(
+            source.width + frame.left + frame.right,
+            source.height + frame.top + frame.bottom,
+            RectF(inset, inset, width - inset, height - inset),
+        )
+        val scale = outer.width() / (source.width + frame.left + frame.right)
+        val photo = RectF(
+            outer.left + frame.left * scale,
+            outer.top + frame.top * scale,
+            outer.right - frame.right * scale,
+            outer.bottom - frame.bottom * scale,
+        )
+        if (border.frame == FrameStyle.NONE) {
+            drawImage(canvas, source, fullRect(source), photo, border)
+        } else {
+            drawFrame(canvas, outer, photo, border)
+            drawImage(canvas, source, fullRect(source), photo, Border())
+        }
 
         return applyAdjustments(output, settings.adjustments).also { drawText(it, settings) }
+    }
+
+    /** A [width] x [height] box scaled to fit [area], centred. */
+    private fun fitCentered(width: Float, height: Float, area: RectF): RectF {
+        val scale = min(area.width() / width, area.height() / height)
+        val w = width * scale
+        val h = height * scale
+        val left = area.left + (area.width() - w) / 2
+        val top = area.top + (area.height() - h) / 2
+        return RectF(left, top, left + w, top + h)
+    }
+
+    /** The frame around [photo]: card or film filling [outer], with the border's corners and shadow. */
+    private fun drawFrame(canvas: Canvas, outer: RectF, photo: RectF, border: Border) {
+        val radius = cornerRadius(border, outer)
+        val shortSide = min(outer.width(), outer.height())
+        if (border.shadow > 0f) {
+            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            shadowPaint.color = Color.BLACK
+            shadowPaint.setShadowLayer(
+                1f + border.shadow * 0.06f * shortSide,
+                0f,
+                border.shadow * 0.02f * shortSide,
+                Color.argb((border.shadow * 170).roundToInt(), 0, 0, 0),
+            )
+            canvas.drawRoundRect(outer, radius, radius, shadowPaint)
+        }
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+        fill.color = when (border.frame) {
+            FrameStyle.POLAROID -> Color.rgb(250, 248, 242)
+            FrameStyle.FILM -> Color.rgb(20, 20, 20)
+            else -> Color.WHITE
+        }
+        canvas.drawRoundRect(outer, radius, radius, fill)
+        if (border.frame == FrameStyle.FILM) drawSprocketHoles(canvas, outer, photo)
+    }
+
+    /** Rows of film perforations in the two bands beside the photo's long sides. */
+    private fun drawSprocketHoles(canvas: Canvas, outer: RectF, photo: RectF) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.color = Color.rgb(236, 236, 236)
+        val horizontal = photo.width() >= photo.height()
+        val band = if (horizontal) photo.top - outer.top else photo.left - outer.left
+        val length = if (horizontal) outer.width() else outer.height()
+        // Real 35 mm holes: a little longer along the film than across it.
+        val along = band * 0.5f
+        val across = band * 0.36f
+        val pitch = band * 0.85f
+        val count = ((length - band * 0.3f) / pitch).toInt().coerceAtLeast(1)
+        val start = (length - (count - 1) * pitch) / 2
+        val radius = across * 0.2f
+        for (i in 0 until count) {
+            val c = start + i * pitch
+            if (horizontal) {
+                val x = outer.left + c
+                val topY = outer.top + band / 2
+                val bottomY = outer.bottom - band / 2
+                canvas.drawRoundRect(RectF(x - along / 2, topY - across / 2, x + along / 2, topY + across / 2), radius, radius, paint)
+                canvas.drawRoundRect(RectF(x - along / 2, bottomY - across / 2, x + along / 2, bottomY + across / 2), radius, radius, paint)
+            } else {
+                val y = outer.top + c
+                val leftX = outer.left + band / 2
+                val rightX = outer.right - band / 2
+                canvas.drawRoundRect(RectF(leftX - across / 2, y - along / 2, leftX + across / 2, y + along / 2), radius, radius, paint)
+                canvas.drawRoundRect(RectF(rightX - across / 2, y - along / 2, rightX + across / 2, y + along / 2), radius, radius, paint)
+            }
+        }
     }
 
     /** Draws the caption, if any, over the whole of [bitmap]. */
@@ -199,19 +315,6 @@ object PhotoProcessor {
         border.cornerRadius * MAX_CORNER_RADIUS * min(rect.width(), rect.height())
 
     private fun fullRect(source: Bitmap) = RectF(0f, 0f, source.width.toFloat(), source.height.toFloat())
-
-    /** Where the photo goes: as large as fits inside the margin, centred. */
-    private fun photoRect(source: Bitmap, inset: Float, width: Int, height: Int): RectF {
-        val scale = min(
-            (width - 2 * inset) / source.width,
-            (height - 2 * inset) / source.height,
-        )
-        val w = source.width * scale
-        val h = source.height * scale
-        val left = (width - w) / 2f
-        val top = (height - h) / 2f
-        return RectF(left, top, left + w, top + h)
-    }
 
     /**
      * Draws the [crop] of [source] into [rect], with the border's rounded corners and shadow.

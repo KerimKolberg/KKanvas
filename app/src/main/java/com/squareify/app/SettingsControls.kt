@@ -123,6 +123,8 @@ fun StyleControls(
     showBorder: Boolean = true,
     /** True in the editors for one item: a caption belongs to that item, not to all new media. */
     showText: Boolean = false,
+    /** Polaroid, film strip …: for single photos and videos, not collages. */
+    showFrameStyles: Boolean = true,
 ) {
     var tab by rememberSaveable { mutableStateOf(StyleTab.BACKGROUND) }
     val tabs = StyleTab.entries.filter { (showBorder || it != StyleTab.BORDER) && (showText || it != StyleTab.TEXT) }
@@ -138,7 +140,7 @@ fun StyleControls(
     }
     when (shown) {
         StyleTab.BACKGROUND -> BackgroundControls(settings, onChange, photoColors, onPickFromPhoto)
-        StyleTab.BORDER -> BorderControls(settings, onChange)
+        StyleTab.BORDER -> BorderControls(settings, onChange, showFrameStyles)
         StyleTab.ADJUST -> AdjustmentControls(settings, onChange, sample)
         StyleTab.TEXT -> TextControls(settings, onChange, photoColors)
     }
@@ -208,9 +210,27 @@ private fun BackgroundControls(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BorderControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit) {
+private fun BorderControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit, showFrameStyles: Boolean) {
     val border = settings.border
+    if (showFrameStyles) {
+        Text("Frame", style = MaterialTheme.typography.labelMedium)
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 4.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FrameStyle.entries.forEach { style ->
+                FilterChip(
+                    selected = border.frame == style,
+                    onClick = { onChange(settings.copy(border = border.copy(frame = style))) },
+                    label = { Text(style.label) },
+                )
+            }
+        }
+    }
     AdjustmentSlider("Margin", border.margin, 0f, 1f) {
         onChange(settings.copy(border = border.copy(margin = it)))
     }

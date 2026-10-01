@@ -220,6 +220,7 @@ fun CollageEditor(
                 onChange = { settings = it },
                 sample = collage.cells.firstNotNullOfOrNull { it.preview },
                 showText = true,
+                showFrameStyles = false,
             )
 
             Spacer(Modifier.height(16.dp))
