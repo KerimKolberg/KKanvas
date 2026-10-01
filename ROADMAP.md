@@ -48,10 +48,12 @@
 - Saved projects: the grid (every item, its edits, collages, panoramas, carousels) is kept as
   JSON in the app's files and restored at launch; pictures rebuild from the originals, and
   picked media keep read access across restarts (persistable photo-picker permission).
+- Post to Instagram: the green share button offers Instagram directly (its own Feed / Stories /
+  Reels / Chats choice; slides go together as one carousel) or the usual share sheet.
 
 ## Next
 1. Photo shapes (circle, arch, pill, torn edge); stickers / overlays drawn in-app; per-photo
-   edits inside collages; gradient across all slides; undo/redo; "Post to Instagram" button.
+   edits inside collages; gradient across all slides; undo/redo.
 2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 

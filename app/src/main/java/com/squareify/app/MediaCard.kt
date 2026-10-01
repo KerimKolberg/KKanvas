@@ -34,6 +34,13 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +59,7 @@ fun MediaCard(
     onRemove: () -> Unit,
     onRenderVideo: () -> Unit,
     onShare: () -> Unit,
+    onPostToInstagram: () -> Unit,
     onRetry: () -> Unit,
     selectionMode: Boolean,
     selected: Boolean,
@@ -222,7 +230,7 @@ fun MediaCard(
                     .background(if (selected) Color.White else Color.Black.copy(alpha = 0.35f)),
             )
         } else {
-            CardActions(item, onEdit, onRemove, onShare, Modifier.align(Alignment.BottomEnd))
+            CardActions(item, onEdit, onRemove, onShare, onPostToInstagram, Modifier.align(Alignment.BottomEnd))
         }
     }
 }
@@ -233,6 +241,7 @@ private fun CardActions(
     onEdit: () -> Unit,
     onRemove: () -> Unit,
     onShare: () -> Unit,
+    onPostToInstagram: () -> Unit,
     modifier: Modifier,
 ) {
     Row(
@@ -246,21 +255,42 @@ private fun CardActions(
             }
         }
         if (item.isRendered) {
-            // Green = saved; tapping it shares the saved file.
+            // Green = saved; tapping it offers posting to Instagram or sharing elsewhere.
             val savedTo = if (item.isVideo) "Movies/Squareify" else "Pictures/Squareify"
-            FilledIconButton(
-                onClick = onShare,
-                modifier = Modifier.size(36.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Color(0xFF16A34A),
-                    contentColor = Color.White,
-                ),
-            ) {
-                Icon(
-                    Icons.Default.Share,
-                    contentDescription = "Saved to $savedTo. Share",
-                    modifier = Modifier.size(18.dp),
-                )
+            var shareMenu by remember { mutableStateOf(false) }
+            Box {
+                FilledIconButton(
+                    onClick = { shareMenu = true },
+                    modifier = Modifier.size(36.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = Color(0xFF16A34A),
+                        contentColor = Color.White,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = "Saved to $savedTo. Share",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                DropdownMenu(expanded = shareMenu, onDismissRequest = { shareMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Post to Instagram") },
+                        leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                        onClick = {
+                            shareMenu = false
+                            onPostToInstagram()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Share…") },
+                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                        onClick = {
+                            shareMenu = false
+                            onShare()
+                        },
+                    )
+                }
             }
         }
         FilledIconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {

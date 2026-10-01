@@ -2,6 +2,7 @@ package com.squareify.app
 
 import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.IntentSender
@@ -10,6 +11,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -316,6 +318,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
                             onRemove = { viewModel.remove(item.id) },
                             onRenderVideo = { viewModel.renderVideo(item.id) },
                             onShare = { shareOutputs(context, listOf(item)) },
+                            onPostToInstagram = { postToInstagram(context, listOf(item)) },
                             onRetry = { viewModel.retry(item.id) },
                             selectionMode = selectionMode,
                             selected = item.id in viewModel.selectedIds,
@@ -617,10 +620,32 @@ private fun CreateButton(enabled: Boolean, contentPadding: PaddingValues, onCrea
 
 /** Opens the system share sheet (Instagram feed, story, DMs, …) for the saved outputs of [items]. */
 private fun shareOutputs(context: Context, items: List<MediaItem>) {
+    val send = sendIntent(items) ?: return
+    context.startActivity(Intent.createChooser(send, null))
+}
+
+/**
+ * Straight into Instagram's new-post screen with the saved outputs (several become one carousel,
+ * in order). Without Instagram it falls back to the share sheet.
+ */
+private fun postToInstagram(context: Context, items: List<MediaItem>) {
+    val send = sendIntent(items) ?: return
+    try {
+        context.startActivity(send.setPackage(INSTAGRAM))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "Instagram isn't installed; pick an app instead.", Toast.LENGTH_SHORT).show()
+        context.startActivity(Intent.createChooser(send.setPackage(null), null))
+    }
+}
+
+private const val INSTAGRAM = "com.instagram.android"
+
+/** A send intent for the saved outputs of [items]; null if nothing is saved. */
+private fun sendIntent(items: List<MediaItem>): Intent? {
     val saved = items.filter { it.outputUri != null }
-    // A panorama shares all its slides, in order, ready to post as one carousel.
+    // Slides (panoramas, carousels) go all together, in order, ready to post as one carousel.
     val uris = saved.flatMap { it.outputUris.ifEmpty { listOfNotNull(it.outputUri) } }
-    if (uris.isEmpty()) return
+    if (uris.isEmpty()) return null
     val send = if (uris.size == 1) {
         Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.first())
     } else {
@@ -632,5 +657,5 @@ private fun shareOutputs(context: Context, items: List<MediaItem>) {
         else -> "*/*"
     }
     send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    context.startActivity(Intent.createChooser(send, null))
+    return send
 }
