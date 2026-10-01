@@ -74,6 +74,27 @@ class PanoramaRendererTest {
         assertTrue(Color.red(second.getPixel(399, 200)) > 245)
     }
 
+    @Test
+    fun aLeftToRightGradientFlowsAcrossAllSlides() {
+        // A fitted, very short photo leaves the gradient background showing above and below.
+        val gradient = FrameSettings(
+            paddingStyle = com.squareify.app.PaddingStyle.GRADIENT,
+            bgColor = Color.RED,
+            bgColor2 = Color.BLUE,
+            gradientDirection = com.squareify.app.GradientDirection.HORIZONTAL,
+        )
+        val thin = Bitmap.createBitmap(1000, 10, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
+        val pano = Panorama(3, fit = CellFit.FIT)
+        val slides = (0 until 3).map { PanoramaRenderer.renderSlide(thin, pano, gradient, it, 200, 200) }
+        // Red at the very start, blue at the very end.
+        assertTrue(Color.red(slides[0].getPixel(1, 20)) > 240)
+        assertTrue(Color.blue(slides[2].getPixel(198, 20)) > 240)
+        // Each seam continues where the slide before left off.
+        for (i in 0 until 2) {
+            assertEquals(Color.red(slides[i].getPixel(199, 20)), Color.red(slides[i + 1].getPixel(0, 20)), 3f)
+        }
+    }
+
     private fun assertEquals(expected: Int, actual: Int, tolerance: Float) =
         assertTrue("expected $expected, got $actual", abs(expected - actual) <= tolerance)
 }

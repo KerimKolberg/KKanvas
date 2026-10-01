@@ -8,6 +8,13 @@ import java.util.UUID
 
 enum class PaddingStyle { SOLID, GRADIENT, BLUR }
 
+/** Which way a gradient background runs; on slides it spans all of them, so it flows across. */
+enum class GradientDirection(val label: String) {
+    VERTICAL("Top to bottom"),
+    HORIZONTAL("Left to right"),
+    DIAGONAL("Diagonal"),
+}
+
 /** Output aspect ratio. All of these are formats Instagram accepts. */
 enum class FrameFormat(
     val label: String,
@@ -64,6 +71,7 @@ data class FrameSettings(
     val bgColor: Int = Color.WHITE,
     /** Bottom colour of the gradient. */
     val bgColor2: Int = Color.parseColor("#1E293B"),
+    val gradientDirection: GradientDirection = GradientDirection.VERTICAL,
     /** 0–1; the default matches the blur radius of the original app. */
     val blurStrength: Float = DEFAULT_BLUR_STRENGTH,
     val border: Border = Border(),

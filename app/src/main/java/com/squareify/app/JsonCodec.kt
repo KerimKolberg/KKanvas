@@ -53,6 +53,7 @@ internal fun FrameSettings.toJson(): JSONObject = JSONObject().apply {
     put("paddingStyle", paddingStyle.name)
     put("bgColor", bgColor)
     put("bgColor2", bgColor2)
+    put("gradientDirection", gradientDirection.name)
     put("blurStrength", blurStrength.toDouble())
     put("border", JSONObject().apply {
         put("margin", border.margin.toDouble())
@@ -100,6 +101,7 @@ internal fun frameSettingsFromJson(o: JSONObject): FrameSettings {
         paddingStyle = o.enum("paddingStyle", d.paddingStyle),
         bgColor = o.optInt("bgColor", d.bgColor),
         bgColor2 = o.optInt("bgColor2", d.bgColor2),
+        gradientDirection = o.enum("gradientDirection", d.gradientDirection),
         blurStrength = o.float("blurStrength", d.blurStrength),
         border = if (border == null) d.border else Border(
             margin = border.float("margin", 0f),

@@ -203,14 +203,42 @@ private fun BackgroundControls(
             onPickFromPhoto = onPickFromPhoto?.let { pick -> { pick(ColorSlot.PRIMARY) } },
         )
         PaddingStyle.GRADIENT -> {
-            Text("Top", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                if (settings.gradientDirection == GradientDirection.VERTICAL) "Top" else "Start",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
             ColorChoices(
                 selected = settings.bgColor,
                 onSelect = { onChange(settings.copy(bgColor = it)) },
                 photoColors = photoColors,
                 onPickFromPhoto = onPickFromPhoto?.let { pick -> { pick(ColorSlot.PRIMARY) } },
             )
-            Text("Bottom", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            Text("Direction", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GradientDirection.entries.forEach { direction ->
+                    FilterChip(
+                        selected = settings.gradientDirection == direction,
+                        onClick = { onChange(settings.copy(gradientDirection = direction)) },
+                        label = { Text(direction.label) },
+                    )
+                }
+            }
+            Text(
+                "On carousels and panoramas the gradient runs across all the slides.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                if (settings.gradientDirection == GradientDirection.VERTICAL) "Bottom" else "End",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
             ColorChoices(
                 selected = settings.bgColor2,
                 onSelect = { onChange(settings.copy(bgColor2 = it)) },

@@ -23,6 +23,7 @@ import com.squareify.app.Border
 import com.squareify.app.FrameFormat
 import com.squareify.app.FrameSettings
 import com.squareify.app.FrameStyle
+import com.squareify.app.GradientDirection
 import com.squareify.app.PaddingStyle
 import kotlin.math.ceil
 import kotlin.math.max
@@ -283,8 +284,13 @@ object PhotoProcessor {
             PaddingStyle.SOLID -> canvas.drawColor(settings.bgColor)
             PaddingStyle.GRADIENT -> {
                 val paint = Paint()
+                val (endX, endY) = when (settings.gradientDirection) {
+                    GradientDirection.VERTICAL -> 0f to height.toFloat()
+                    GradientDirection.HORIZONTAL -> width.toFloat() to 0f
+                    GradientDirection.DIAGONAL -> width.toFloat() to height.toFloat()
+                }
                 paint.shader = LinearGradient(
-                    0f, 0f, 0f, height.toFloat(),
+                    0f, 0f, endX, endY,
                     settings.bgColor, settings.bgColor2,
                     Shader.TileMode.CLAMP,
                 )
