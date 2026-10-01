@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.squareify.app.processing.ColorExtractor
+import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +58,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun trashableItems(ids: Set<String>? = null): List<MediaItem> =
         items.filter {
             // A collage's originals are the photos it was made from, which have their own items.
-            (ids == null || it.id in ids) && it.collage == null &&
+            (ids == null || it.id in ids) && it.collage == null && it.carousel == null &&
                 it.isRendered && !it.isProcessing && !it.originalTrashed &&
                 mediaStoreUri(context, it.sourceUri, it.isVideo) != null
         }
@@ -187,7 +188,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startCollageFromSelection() {
         val selected = items.filter { it.id in selectedIds }
         when {
-            selected.any { it.collage != null || it.panorama != null } ->
+            selected.any { it.collage != null || it.panorama != null || it.carousel != null } ->
                 Toast.makeText(context, "Collages and slides can't go into another collage.", Toast.LENGTH_LONG).show()
             selected.size == 1 -> startPanorama(selected.single())
             else -> collageDraft = newCollage(selected.map { CollageCell(it.sourceUri, it.displayName, it.preview, isVideo = it.isVideo) })
@@ -225,6 +226,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         collageDraft = null
     }
 
+    /** A new carousel open in the editor, not yet created. */
+    var carouselDraft by mutableStateOf<Carousel?>(null)
+        private set
+
+    /** Opens the carousel editor with picked photos spread across a slide each (2 to 10 slides). */
+    fun startCarouselFromPicker(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        isProcessing = true
+        viewModelScope.launch {
+            val photos = withContext(Dispatchers.IO) { uris.take(Carousel.MAX_PHOTOS).mapNotNull { loadCarouselPhoto(context, it) } }
+            isProcessing = false
+            if (photos.size < uris.size) {
+                Toast.makeText(context, "Couldn't open ${uris.size - photos.size} of ${uris.size} photos", Toast.LENGTH_LONG).show()
+            }
+            if (photos.isEmpty()) return@launch
+            val slides = photos.size.coerceIn(Carousel.MIN_SLIDES, Carousel.MAX_SLIDES)
+            val format = globalSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT
+            val placements = spreadPlacements(photos.map { it.aspect }, slides, slideHeightUnits(format))
+            carouselDraft = Carousel(slides, photos.zip(placements) { photo, placement -> photo.copy(placement = placement) })
+        }
+    }
+
+    fun dismissCarouselDraft() {
+        carouselDraft = null
+    }
+
+    /** Adds the carousel at the top of the grid and saves its slides. */
+    fun createCarousel(carousel: Carousel, settings: FrameSettings) {
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val item = MediaItem(
+            sourceUri = carousel.photos.first().sourceUri,
+            isVideo = false,
+            displayName = "carousel_$stamp",
+            settings = settings,
+            preview = carousel.photos.first().preview,
+            carousel = carousel,
+        )
+        items = listOf(item) + items
+        carouselDraft = null
+        refreshCarousel(item.id)
+    }
+
+    fun applyCarouselEdit(id: String, carousel: Carousel, settings: FrameSettings) {
+        updateItem(id) { it.copy(carousel = carousel, settings = settings, isRendered = false, warning = null) }
+        refreshCarousel(id)
+    }
+
+    private fun refreshCarousel(id: String) {
+        viewModelScope.launch {
+            val item = items.firstOrNull { it.id == id } ?: return@launch
+            val carousel = item.carousel ?: return@launch
+            val thumbnail = withContext(Dispatchers.Default) { renderCarouselThumbnail(carousel, item.settings, THUMBNAIL_SIZE) }
+            updateItem(id) { it.copy(thumbnail = thumbnail) }
+            autoSavePhoto(id)
+        }
+    }
+
     /** A photo about to be split into carousel slides, open in the panorama editor. */
     data class PanoramaDraft(val sourceUri: Uri, val displayName: String, val preview: android.graphics.Bitmap?)
 
@@ -233,7 +291,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Opens the panorama editor for a photo in the grid. */
     fun startPanorama(item: MediaItem) {
-        if (item.isVideo || item.collage != null) {
+        if (item.isVideo || item.collage != null || item.carousel != null) {
             Toast.makeText(context, PICK_HINT, Toast.LENGTH_LONG).show()
             return
         }
@@ -445,14 +503,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val saved = withContext(Dispatchers.Default) {
                     val panorama = item.panorama
-                    if (panorama != null) savePanoramaSlides(item, panorama) else listOfNotNull(savePhoto(item))
+                    val carousel = item.carousel
+                    when {
+                        panorama != null -> savePanoramaSlides(item, panorama)
+                        carousel != null -> saveCarouselSlides(item, carousel)
+                        else -> listOfNotNull(savePhoto(item))
+                    }
                 }
                 updateItem(id) {
                     // A newer edit arrived meanwhile: it's still waiting for its own save.
-                    val current = it.settings == item.settings && it.collage == item.collage && it.panorama == item.panorama
+                    val current = it.settings == item.settings && it.collage == item.collage &&
+                        it.panorama == item.panorama && it.carousel == item.carousel
                     it.copy(
                         outputUri = saved.firstOrNull(),
-                        outputUris = if (item.panorama != null) saved else emptyList(),
+                        outputUris = if (item.panorama != null || item.carousel != null) saved else emptyList(),
                         isProcessing = !current,
                         isRendered = current,
                     )
@@ -500,6 +564,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         source.recycle()
         item.outputUris.drop(panorama.slides).forEach { GallerySaver.deleteOwn(context, it) }
+        return uris
+    }
+
+    /**
+     * Saves each slide of a carousel, named after the carousel ("carousel_<time>_1" …), overwriting
+     * the previous save's slides; leftover slides of a longer earlier version are deleted.
+     */
+    private fun saveCarouselSlides(item: MediaItem, carousel: Carousel): List<Uri> {
+        val (width, height) = slideSize(item.settings.format)
+        // Each photo only as large as it appears on the slides (with room to spare), within memory.
+        val sources = carousel.photos.mapIndexed { i, photo ->
+            val rect = CarouselRenderer.photoRect(carousel, i, width.toFloat() * carousel.slides, height.toFloat())
+            val needed = (maxOf(rect.width(), rect.height()) * 1.2f).toInt().coerceIn(256, 4000)
+            try {
+                PhotoProcessor.loadDownscaledBitmap(context, photo.sourceUri, needed)
+            } catch (e: Exception) {
+                Log.w(TAG, "carousel photo ${photo.displayName} is gone", e)
+                null
+            }
+        }
+        val uris = (0 until carousel.slides).map { i ->
+            val slide = CarouselRenderer.renderSlide(carousel, sources, item.settings, i, width, height)
+            val uri = GallerySaver.saveImage(context, slide, "${item.displayName}_${i + 1}", replace = item.outputUris.getOrNull(i))
+            slide.recycle()
+            uri ?: throw IllegalStateException("Couldn't save slide ${i + 1}")
+        }
+        sources.forEach { it?.recycle() }
+        item.outputUris.drop(carousel.slides).forEach { GallerySaver.deleteOwn(context, it) }
         return uris
     }
 

@@ -1,0 +1,485 @@
+package com.squareify.app
+
+import android.graphics.Bitmap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asComposeColorFilter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.squareify.app.processing.CarouselRenderer
+import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.TextRenderer
+import com.squareify.app.processing.WatermarkRenderer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.min
+
+/**
+ * The carousel canvas: photos placed freely across slides, dragged, pinched to resize and turned
+ * with two fingers; they snap to slide edges and middles.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CarouselEditor(
+    initialCarousel: Carousel,
+    initialSettings: FrameSettings,
+    isNew: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (Carousel, FrameSettings) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var carousel by remember { mutableStateOf(initialCarousel) }
+    var settings by remember {
+        mutableStateOf(initialSettings.copy(format = initialSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT))
+    }
+    var selected by remember { mutableStateOf<Int?>(null) }
+    var guides by remember { mutableStateOf<Snapped?>(null) }
+    var previewing by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    val heightUnits = slideHeightUnits(settings.format)
+
+    fun update(index: Int, placement: Placement) {
+        carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = it[index].copy(placement = placement) })
+    }
+
+    // More photos, added in the middle of the slide most in need of one.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(Carousel.MAX_PHOTOS)) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        loading = true
+        scope.launch {
+            val added = withContext(Dispatchers.IO) { uris.mapNotNull { loadCarouselPhoto(context, it) } }
+            var photos = carousel.photos
+            added.take(Carousel.MAX_PHOTOS - photos.size).forEach { photo ->
+                val counts = (0 until carousel.slides).map { s -> photos.count { slideOf(it.placement, carousel.slides) == s } }
+                val slide = counts.indexOf(counts.min())
+                photos = photos + photo.copy(placement = fitSlidePlacement(slide, photo.aspect, heightUnits).let { it.copy(width = it.width * 0.8f) })
+            }
+            carousel = carousel.copy(photos = photos)
+            loading = false
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(if (isNew) "New carousel" else "Edit carousel", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+
+            CarouselCanvas(
+                carousel = carousel,
+                settings = settings,
+                selected = selected,
+                guides = guides,
+                onSelect = { selected = it },
+                onPlace = { index, snapped ->
+                    update(index, snapped.placement)
+                    guides = snapped
+                },
+                onGestureEnd = { guides = null },
+            )
+            Text(
+                "Drag photos anywhere, across the seams. Two fingers resize and turn them. " +
+                    "Swipe an empty spot to scroll.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+            )
+
+            val index = selected?.takeIf { it < carousel.photos.size }
+            if (index != null) {
+                PhotoActions(
+                    onFitSlide = {
+                        val photo = carousel.photos[index]
+                        update(index, fitSlidePlacement(slideOf(photo.placement, carousel.slides), photo.aspect, heightUnits))
+                    },
+                    onStraighten = { update(index, carousel.photos[index].placement.copy(rotation = 0f)) },
+                    onFront = {
+                        val photos = carousel.photos.toMutableList()
+                        photos.add(photos.removeAt(index))
+                        carousel = carousel.copy(photos = photos)
+                        selected = photos.lastIndex
+                    },
+                    onBack = {
+                        val photos = carousel.photos.toMutableList()
+                        photos.add(0, photos.removeAt(index))
+                        carousel = carousel.copy(photos = photos)
+                        selected = 0
+                    },
+                    onRemove = {
+                        carousel = carousel.copy(photos = carousel.photos.filterIndexed { i, _ -> i != index })
+                        selected = null
+                    },
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                FilledTonalIconButton(
+                    onClick = { carousel = carousel.copy(slides = carousel.slides - 1) },
+                    enabled = carousel.slides > Carousel.MIN_SLIDES,
+                ) { Icon(Icons.Default.Remove, contentDescription = "Fewer slides") }
+                Text(
+                    "${carousel.slides}",
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(36.dp),
+                )
+                FilledTonalIconButton(
+                    onClick = { carousel = carousel.copy(slides = carousel.slides + 1) },
+                    enabled = carousel.slides < Carousel.MAX_SLIDES,
+                ) { Icon(Icons.Default.Add, contentDescription = "More slides") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    enabled = !loading && carousel.photos.size < Carousel.MAX_PHOTOS,
+                ) {
+                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (loading) "Adding…" else "Add photos")
+                }
+                TextButton(
+                    onClick = {
+                        val placements = spreadPlacements(carousel.photos.map { it.aspect }, carousel.slides, heightUnits)
+                        carousel = carousel.copy(photos = carousel.photos.zip(placements) { p, place -> p.copy(placement = place) })
+                    },
+                    enabled = carousel.photos.isNotEmpty(),
+                ) { Text("Spread out evenly") }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) }, formats = Panorama.FORMATS)
+            StyleControls(
+                settings = settings,
+                onChange = { settings = it },
+                sample = carousel.photos.firstNotNullOfOrNull { it.preview },
+                showText = true,
+                showFrameStyles = false,
+            )
+
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(onClick = { previewing = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Visibility, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Preview the swipe")
+            }
+            Button(
+                onClick = {
+                    onApply(carousel, settings)
+                    onDismiss()
+                },
+                enabled = carousel.photos.isNotEmpty(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            ) {
+                Text(if (isNew) "Create ${carousel.slides} slides" else "Apply")
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (previewing) {
+        val shown = carousel
+        val style = settings
+        val sources = shown.photos.map { it.preview }
+        SwipePreviewDialog(
+            slides = shown.slides,
+            aspect = 1f / slideHeightUnits(style.format),
+            renderSlide = { i ->
+                val width = SWIPE_PREVIEW_WIDTH
+                CarouselRenderer.renderSlide(shown, sources, style, i, width, (width * slideHeightUnits(style.format)).toInt())
+            },
+            warnings = carouselWarnings(shown.slides, shown.shapes(), slideHeightUnits(style.format)),
+            onDismiss = { previewing = false },
+        )
+    }
+}
+
+/** The slides side by side, with the photos on top; scrolls sideways when wider than the screen. */
+@Composable
+private fun CarouselCanvas(
+    carousel: Carousel,
+    settings: FrameSettings,
+    selected: Int?,
+    guides: Snapped?,
+    onSelect: (Int?) -> Unit,
+    onPlace: (Int, Snapped) -> Unit,
+    onGestureEnd: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val canvasHeight = 260.dp
+    val heightUnits = slideHeightUnits(settings.format)
+    val slideWidth = canvasHeight / heightUnits
+    val canvasWidth = slideWidth * carousel.slides
+
+    // Background, and text + logo, drawn as they'll be saved; the photos on top are live.
+    var background by remember { mutableStateOf<Bitmap?>(null) }
+    var overlay by remember { mutableStateOf<Bitmap?>(null) }
+    val first = carousel.photos.firstOrNull()?.preview
+    val pxHeight = with(density) { canvasHeight.roundToPx() }
+    val pxWidth = (pxHeight / heightUnits * carousel.slides).toInt().coerceAtLeast(1)
+    LaunchedEffect(first, settings.copy(adjustments = Adjustments(), text = null, watermark = Watermark()), pxWidth, pxHeight) {
+        delay(30)
+        background = withContext(Dispatchers.Default) {
+            Bitmap.createBitmap(pxWidth, pxHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+                val canvas = android.graphics.Canvas(bitmap)
+                if (first != null) PhotoProcessor.drawBackground(canvas, first, settings, pxWidth, pxHeight) else canvas.drawColor(settings.bgColor)
+            }
+        }
+    }
+    LaunchedEffect(settings.text, settings.watermark, pxWidth, pxHeight) {
+        delay(30)
+        overlay = withContext(Dispatchers.Default) {
+            if (settings.text == null && !settings.watermark.enabled) {
+                null
+            } else {
+                Bitmap.createBitmap(pxWidth, pxHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+                    val canvas = android.graphics.Canvas(bitmap)
+                    val area = android.graphics.RectF(0f, 0f, pxWidth.toFloat(), pxHeight.toFloat())
+                    TextRenderer.draw(canvas, settings.text, area)
+                    WatermarkRenderer.draw(canvas, settings.watermark, area)
+                }
+            }
+        }
+    }
+
+    val currentCarousel by rememberUpdatedState(carousel)
+    val currentHeightUnits by rememberUpdatedState(heightUnits)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentOnPlace by rememberUpdatedState(onPlace)
+    val currentOnGestureEnd by rememberUpdatedState(onGestureEnd)
+    val colorFilter = remember(settings.adjustments) { PhotoProcessor.colorFilter(settings.adjustments)?.asComposeColorFilter() }
+    val accent = MaterialTheme.colorScheme.primary
+    val textMeasurer = rememberTextMeasurer()
+    val numberStyle = MaterialTheme.typography.labelSmall.copy(color = Color.White)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(canvasWidth, canvasHeight)
+                .clipToBounds()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val c = currentCarousel
+                        val unit = size.width.toFloat() / c.slides
+                        val units = currentHeightUnits
+                        val hit = carouselPhotoAt(c.shapes(), units, down.position.x / unit, down.position.y / unit)
+                        currentOnSelect(hit)
+                        // On an empty spot the touch is left alone, so the canvas can scroll.
+                        if (hit == null) return@awaitEachGesture
+                        down.consume()
+                        val aspect = c.photos[hit].aspect
+                        // Where the photo would be without snapping, so it follows the finger past snap points.
+                        var raw = c.photos[hit].placement
+                        var travel = Offset.Zero
+                        var moving = false
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.none { it.pressed }) break
+                                val pan = event.calculatePan()
+                                travel += pan
+                                // A tap shouldn't nudge the photo: wait for a real move or a second finger.
+                                if (!moving && event.changes.size < 2 && travel.getDistance() < viewConfiguration.touchSlop) {
+                                    event.changes.forEach { it.consume() }
+                                    continue
+                                }
+                                moving = true
+                                raw = raw.copy(
+                                    x = raw.x + pan.x / unit,
+                                    y = raw.y + pan.y / size.height,
+                                    width = (raw.width * event.calculateZoom()).coerceIn(0.08f, c.slides.toFloat()),
+                                    rotation = raw.rotation + event.calculateRotation(),
+                                )
+                                currentOnPlace(hit, snapPlacement(raw, aspect, units, c.slides, SNAP_DISTANCE.toPx() / unit))
+                                event.changes.forEach { if (it.positionChanged()) it.consume() }
+                            }
+                        } finally {
+                            currentOnGestureEnd()
+                        }
+                    }
+                },
+        ) {
+            background?.let {
+                Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+            }
+            carousel.photos.forEach { photo ->
+                val preview = photo.preview
+                if (preview != null) {
+                    val w = slideWidth * photo.placement.width
+                    val h = w / photo.aspect
+                    val left = slideWidth * photo.placement.x - w / 2
+                    val top = canvasHeight * photo.placement.y - h / 2
+                    val radius = min(w.value, h.value) * settings.border.cornerRadius * 0.5f
+                    Image(
+                        preview.asImageBitmap(),
+                        contentDescription = photo.displayName,
+                        contentScale = ContentScale.FillBounds,
+                        colorFilter = colorFilter,
+                        modifier = Modifier
+                            .absoluteOffset(left, top)
+                            .size(w, h)
+                            .graphicsLayer {
+                                rotationZ = photo.placement.rotation
+                                shadowElevation = settings.border.shadow * 12.dp.toPx()
+                                shape = RoundedCornerShape(radius.dp)
+                                clip = true
+                            },
+                    )
+                }
+            }
+            overlay?.let {
+                Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+            }
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val unit = size.width / carousel.slides
+                val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))
+                // Seams between slides, and slide numbers.
+                for (s in 0 until carousel.slides) {
+                    if (s > 0) {
+                        drawLine(Color.White.copy(alpha = 0.85f), Offset(s * unit, 0f), Offset(s * unit, size.height), 1.5.dp.toPx(), pathEffect = dash)
+                    }
+                    val label = textMeasurer.measure("${s + 1}", numberStyle)
+                    val x = s * unit + 6.dp.toPx()
+                    drawRoundRect(
+                        Color.Black.copy(alpha = 0.5f),
+                        topLeft = Offset(x - 3.dp.toPx(), 4.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(label.size.width + 6.dp.toPx(), label.size.height.toFloat()),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()),
+                    )
+                    drawText(label, topLeft = Offset(x, 4.dp.toPx()))
+                }
+                // Lines the dragged photo snapped to.
+                guides?.guidesX?.forEach { gx -> drawLine(accent, Offset(gx * unit, 0f), Offset(gx * unit, size.height), 2.dp.toPx()) }
+                guides?.guidesY?.forEach { gy -> drawLine(accent, Offset(0f, gy * size.height), Offset(size.width, gy * size.height), 2.dp.toPx()) }
+                // The selected photo's outline, turned with it.
+                val photo = selected?.let { carousel.photos.getOrNull(it) }
+                if (photo != null) {
+                    val w = photo.placement.width * unit
+                    val h = w / photo.aspect
+                    val center = Offset(photo.placement.x * unit, photo.placement.y * size.height)
+                    rotate(photo.placement.rotation, center) {
+                        drawRect(
+                            accent,
+                            topLeft = Offset(center.x - w / 2, center.y - h / 2),
+                            size = androidx.compose.ui.geometry.Size(w, h),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(2.5.dp.toPx()),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** What can be done to the selected photo. */
+@Composable
+private fun PhotoActions(
+    onFitSlide: () -> Unit,
+    onStraighten: () -> Unit,
+    onFront: () -> Unit,
+    onBack: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        TextButton(onClick = onFitSlide) { Text("Fit its slide") }
+        TextButton(onClick = onStraighten) { Text("Straighten") }
+        TextButton(onClick = onFront) { Text("To front") }
+        TextButton(onClick = onBack) { Text("To back") }
+        TextButton(onClick = onRemove) { Text("Remove") }
+    }
+}
+
+/** How close (on screen) a photo's edge or middle must come to a guide line to snap onto it. */
+private val SNAP_DISTANCE: Dp = 8.dp

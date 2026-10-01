@@ -7,6 +7,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.CollageRenderer
 import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
@@ -135,17 +136,46 @@ fun renderPanoramaThumbnail(source: Bitmap, panorama: Panorama, settings: FrameS
     val (slideW, slideH) = slideSize(settings.format)
     val height = (width.toFloat() * slideH / (slideW * panorama.slides)).roundToInt().coerceAtLeast(1)
     val strip = PanoramaRenderer.renderStrip(source, panorama, settings, width, height)
+    drawSlideLines(strip, panorama.slides)
+    return strip
+}
+
+/** A photo for a carousel (placed later), or null if it can't be read. */
+fun loadCarouselPhoto(context: Context, uri: Uri): CarouselPhoto? =
+    try {
+        val preview = PhotoProcessor.loadDownscaledBitmap(context, uri, PREVIEW_SIZE)
+        CarouselPhoto(
+            sourceUri = uri,
+            displayName = queryDisplayName(context, uri) ?: "photo",
+            preview = preview,
+            aspect = preview.width.toFloat() / preview.height,
+            placement = Placement(0.5f, 0.5f, 0.8f),
+        )
+    } catch (e: Exception) {
+        null
+    }
+
+/** A carousel's strip from the photos' previews, [width] px wide, with lines where slides meet. */
+fun renderCarouselThumbnail(carousel: Carousel, settings: FrameSettings, width: Int): Bitmap {
+    val (slideW, slideH) = slideSize(settings.format)
+    val height = (width.toFloat() * slideH / (slideW * carousel.slides)).roundToInt().coerceAtLeast(1)
+    val strip = CarouselRenderer.renderStrip(carousel, carousel.photos.map { it.preview }, settings, width, height)
+    drawSlideLines(strip, carousel.slides)
+    return strip
+}
+
+/** Thin white lines where one slide ends and the next begins. */
+private fun drawSlideLines(strip: Bitmap, slides: Int) {
     val paint = android.graphics.Paint().apply {
         color = android.graphics.Color.WHITE
         alpha = 200
-        strokeWidth = (width / 300f).coerceAtLeast(1.5f)
+        strokeWidth = (strip.width / 300f).coerceAtLeast(1.5f)
     }
     val canvas = android.graphics.Canvas(strip)
-    for (i in 1 until panorama.slides) {
-        val x = width.toFloat() * i / panorama.slides
-        canvas.drawLine(x, 0f, x, height.toFloat(), paint)
+    for (i in 1 until slides) {
+        val x = strip.width.toFloat() * i / slides
+        canvas.drawLine(x, 0f, x, strip.height.toFloat(), paint)
     }
-    return strip
 }
 
 /** Gallery file name of slide [index] (from 0), e.g. "carousel_IMG_1234_1". */

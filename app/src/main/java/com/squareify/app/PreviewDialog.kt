@@ -45,8 +45,16 @@ fun PreviewDialog(item: MediaItem, onDismiss: () -> Unit) {
     var loading by remember(item.id) { mutableStateOf(true) }
     var showOriginal by remember { mutableStateOf(false) }
 
-    LaunchedEffect(item.id, item.settings, item.collage, item.panorama) {
+    LaunchedEffect(item.id, item.settings, item.collage, item.panorama, item.carousel) {
         loading = true
+        val carousel = item.carousel
+        if (carousel != null) {
+            // The whole strip from the photos' previews; no single original to compare with.
+            original = null
+            rendered = withContext(Dispatchers.Default) { renderCarouselThumbnail(carousel, item.settings, FULLSCREEN_SIZE) }
+            loading = false
+            return@LaunchedEffect
+        }
         val panorama = item.panorama
         if (panorama != null) {
             // The whole strip, with lines where the slides meet; hold for the original photo.

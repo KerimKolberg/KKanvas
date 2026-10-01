@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +30,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -90,6 +93,7 @@ fun PanoramaEditor(
     fun auto(format: FrameFormat): Int = source?.let { Panorama.autoSlides(it.width, it.height, format) } ?: 3
     var panorama by remember { mutableStateOf(initialPanorama ?: Panorama(auto(settings.format))) }
     var rendered by remember { mutableStateOf<Bitmap?>(null) }
+    var previewing by remember { mutableStateOf(false) }
 
     LaunchedEffect(source, panorama, settings) {
         val src = source ?: return@LaunchedEffect
@@ -186,17 +190,41 @@ fun PanoramaEditor(
             StyleControls(settings = settings, onChange = { settings = it }, sample = preview, showBorder = false, showText = true)
 
             Spacer(Modifier.height(16.dp))
+            OutlinedButton(onClick = { previewing = true }, enabled = source != null, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Visibility, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Preview the swipe")
+            }
             Button(
                 onClick = {
                     onApply(panorama, settings)
                     onDismiss()
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
             ) {
                 Text(if (isNew) "Create ${panorama.slides} slides" else "Apply")
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    val shownSource = source
+    if (previewing && shownSource != null) {
+        val shown = panorama
+        val style = settings
+        val (slideW, slideH) = slideSize(style.format)
+        SwipePreviewDialog(
+            slides = shown.slides,
+            aspect = slideW.toFloat() / slideH,
+            renderSlide = { i ->
+                val width = SWIPE_PREVIEW_WIDTH
+                PanoramaRenderer.renderSlide(shownSource, shown, style, i, width, width * slideH / slideW)
+            },
+            warnings = emptyList(),
+            onDismiss = { previewing = false },
+        )
     }
 }
 

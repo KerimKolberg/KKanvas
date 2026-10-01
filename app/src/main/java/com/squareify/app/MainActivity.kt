@@ -38,15 +38,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Panorama
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
@@ -164,6 +167,12 @@ fun SquarifyApp(viewModel: MainViewModel) {
     val collagePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(CollageLayout.MAX_PHOTOS)
     ) { uris -> viewModel.startCollageFromPicker(uris) }
+    val carouselPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(Carousel.MAX_PHOTOS)
+    ) { uris -> viewModel.startCarouselFromPicker(uris) }
+    val panoramaPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> uri?.let { viewModel.startCollageFromPicker(listOf(it)) } }
 
     Scaffold(
         topBar = {
@@ -251,10 +260,18 @@ fun SquarifyApp(viewModel: MainViewModel) {
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                     )
                 },
-                onNewCollage = {
-                    collagePickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                    )
+                onCreate = { kind ->
+                    when (kind) {
+                        CreateKind.COLLAGE -> collagePickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                        )
+                        CreateKind.CAROUSEL -> carouselPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                        CreateKind.PANORAMA -> panoramaPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
                 },
                 isProcessing = viewModel.isProcessing,
                 sample = items.lastOrNull { it.collage == null && it.preview != null }?.preview,
@@ -278,7 +295,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Tap \"Add Photos/Videos\" to get started.\n\"Collage\": pick 2-9 to combine them,\nor one wide photo to split into carousel slides.",
+                        "Tap \"Add Photos/Videos\" to get started,\nor \"Create\" for a collage, a carousel\nor panorama slides.",
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -360,7 +377,15 @@ fun SquarifyApp(viewModel: MainViewModel) {
     items.firstOrNull { it.id == editingItemId }?.let { item ->
         val collage = item.collage
         val panorama = item.panorama
+        val carousel = item.carousel
         when {
+            carousel != null -> CarouselEditor(
+                initialCarousel = carousel,
+                initialSettings = item.settings,
+                isNew = false,
+                onDismiss = { editingItemId = null },
+                onApply = { c, s -> viewModel.applyCarouselEdit(item.id, c, s) },
+            )
             collage != null -> CollageEditor(
                 initialCollage = collage,
                 initialSettings = item.settings,
@@ -384,6 +409,15 @@ fun SquarifyApp(viewModel: MainViewModel) {
                 onSplitIntoSlides = if (item.isVideo) null else ({ viewModel.startPanorama(item) }),
             )
         }
+    }
+    viewModel.carouselDraft?.let { carousel ->
+        CarouselEditor(
+            initialCarousel = carousel,
+            initialSettings = viewModel.globalSettings,
+            isNew = true,
+            onDismiss = viewModel::dismissCarouselDraft,
+            onApply = { c, s -> viewModel.createCarousel(c, s) },
+        )
     }
     viewModel.panoramaDraft?.let { draft ->
         PanoramaEditor(
@@ -494,7 +528,7 @@ fun GlobalSettingsPanel(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onAddMedia: () -> Unit,
-    onNewCollage: () -> Unit,
+    onCreate: (CreateKind) -> Unit,
     isProcessing: Boolean,
     /** A photo to preview the looks on. */
     sample: Bitmap?,
@@ -515,11 +549,7 @@ fun GlobalSettingsPanel(
                 Text(if (isProcessing) "Processing…" else "Add Photos/Videos", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(8.dp))
-            FilledTonalButton(onClick = onNewCollage, enabled = !isProcessing, contentPadding = buttonPadding) {
-                Icon(Icons.Default.Dashboard, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("Collage", maxLines = 1)
-            }
+            CreateButton(enabled = !isProcessing, contentPadding = buttonPadding, onCreate = onCreate)
             IconButton(onClick = { onExpandedChange(!expanded) }) {
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -539,6 +569,47 @@ fun GlobalSettingsPanel(
                     .verticalScroll(rememberScrollState())
             ) {
                 StyleControls(settings = settings, onChange = onSettingsChange, sample = sample)
+            }
+        }
+    }
+}
+
+/** What the Create button makes. */
+enum class CreateKind(val title: String, val subtitle: String, val icon: ImageVector) {
+    COLLAGE("Collage", "2-9 photos or videos in one picture", Icons.Default.Dashboard),
+    CAROUSEL("Carousel", "Photos placed freely across slides", Icons.Default.ViewCarousel),
+    PANORAMA("Panorama slides", "One wide photo split seamlessly", Icons.Default.Panorama),
+}
+
+/** "Create": a menu of the things made from several photos, or across several slides. */
+@Composable
+private fun CreateButton(enabled: Boolean, contentPadding: PaddingValues, onCreate: (CreateKind) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        FilledTonalButton(onClick = { open = true }, enabled = enabled, contentPadding = contentPadding) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Create", maxLines = 1)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            CreateKind.entries.forEach { kind ->
+                DropdownMenuItem(
+                    leadingIcon = { Icon(kind.icon, contentDescription = null) },
+                    text = {
+                        Column {
+                            Text(kind.title)
+                            Text(
+                                kind.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        onCreate(kind)
+                    },
+                )
             }
         }
     }

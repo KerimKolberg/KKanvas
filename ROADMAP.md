@@ -40,9 +40,17 @@
 - Watermark: the kk logo (KK letters or the full logo, cut from the logo by
   tools/make-watermark.ps1) in a chosen corner, white / black / teal, size and opacity; on
   everything saved once switched on (Logo tab).
+- Carousel canvas (SCRL-style): up to 20 photos placed freely across 2-10 slides, dragged
+  across seams, two-finger resize and turn, snapping to slide edges and middles, fit /
+  straighten / front / back / remove; "Create" menu (Collage, Carousel, Panorama slides).
+- Swipe preview for carousels and panoramas: Instagram-style pager with dots, plus a seam
+  check (slivers of a photo on the next slide, slides with nothing on them).
 
 ## Next
-1. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. **Saved projects**: keep the grid, collages, carousels and edits between launches.
+2. Photo shapes (circle, arch, pill, torn edge); stickers / overlays drawn in-app; per-photo
+   edits inside collages; gradient across all slides; undo/redo; "Post to Instagram" button.
+3. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.
