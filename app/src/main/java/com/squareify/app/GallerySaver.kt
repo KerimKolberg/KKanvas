@@ -87,6 +87,18 @@ object GallerySaver {
         return uri
     }
 
+    /**
+     * Deletes a file this app saved itself (e.g. a slide no longer needed after a panorama got
+     * fewer slides). Android lets an app delete its own files without asking.
+     */
+    fun deleteOwn(context: Context, uri: Uri) {
+        try {
+            context.contentResolver.delete(uri, null, null)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not delete $uri", e)
+        }
+    }
+
     /** False if the file was deleted or moved to the trash since we saved it. */
     private fun exists(resolver: ContentResolver, uri: Uri): Boolean =
         try {

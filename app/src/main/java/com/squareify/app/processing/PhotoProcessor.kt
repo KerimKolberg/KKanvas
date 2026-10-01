@@ -309,16 +309,24 @@ object PhotoProcessor {
 
     /** Darkens the corners of [bitmap] in place; the middle stays as it is. */
     private fun applyVignette(bitmap: Bitmap, amount: Float) {
-        val w = bitmap.width.toFloat()
-        val h = bitmap.height.toFloat()
+        drawVignette(Canvas(bitmap), RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()), amount)
+    }
+
+    /**
+     * Darkens towards the corners of [area], which may reach beyond the canvas (one slide of a
+     * panorama gets its part of the whole panorama's vignette).
+     */
+    fun drawVignette(canvas: Canvas, area: RectF, amount: Float) {
+        val w = area.width()
+        val h = area.height()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         paint.shader = RadialGradient(
-            w / 2, h / 2, sqrt(w * w + h * h) / 2,
+            area.centerX(), area.centerY(), sqrt(w * w + h * h) / 2,
             intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.argb((amount * 210).roundToInt(), 0, 0, 0)),
             floatArrayOf(0f, 0.45f, 1f),
             Shader.TileMode.CLAMP,
         )
-        Canvas(bitmap).drawRect(0f, 0f, w, h, paint)
+        canvas.drawRect(area, paint)
     }
 
     private fun applyColorAdjustments(bitmap: Bitmap, adjustments: Adjustments): Bitmap {

@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.squareify.app.processing.ColorExtractor
+import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -178,26 +179,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Opens the collage editor with the selected items. */
+    /**
+     * Opens the collage editor with the selected items; a single selected photo opens the
+     * panorama editor instead (split into carousel slides).
+     */
     fun startCollageFromSelection() {
         val selected = items.filter { it.id in selectedIds }
-        if (selected.any { it.collage != null }) {
-            Toast.makeText(context, "A collage can't contain another collage.", Toast.LENGTH_LONG).show()
-            return
+        when {
+            selected.any { it.collage != null || it.panorama != null } ->
+                Toast.makeText(context, "Collages and slides can't go into another collage.", Toast.LENGTH_LONG).show()
+            selected.size == 1 -> startPanorama(selected.single())
+            else -> collageDraft = newCollage(selected.map { CollageCell(it.sourceUri, it.displayName, it.preview, isVideo = it.isVideo) })
         }
-        collageDraft = newCollage(selected.map { CollageCell(it.sourceUri, it.displayName, it.preview, isVideo = it.isVideo) })
     }
 
     /**
-     * Opens the collage editor with media picked just for it. They aren't added to the grid or
-     * saved on their own; only the collage is.
+     * Opens the collage editor with media picked just for it, or for a single photo the panorama
+     * editor. They aren't added to the grid or saved on their own; only the result is.
      */
     fun startCollageFromPicker(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        if (uris.size < 2) {
-            Toast.makeText(context, "Pick at least 2 photos or videos for a collage", Toast.LENGTH_LONG).show()
-            return
-        }
         isProcessing = true
         viewModelScope.launch {
             val cells = withContext(Dispatchers.IO) { uris.mapNotNull { loadCell(it) } }
@@ -205,12 +206,77 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (cells.size < uris.size) {
                 Toast.makeText(context, "Couldn't open ${uris.size - cells.size} of ${uris.size} files", Toast.LENGTH_LONG).show()
             }
-            if (cells.size >= 2) collageDraft = newCollage(cells)
+            when {
+                cells.size >= 2 -> collageDraft = newCollage(cells)
+                cells.size == 1 -> {
+                    val cell = cells.single()
+                    if (cell.isVideo) {
+                        Toast.makeText(context, PICK_HINT, Toast.LENGTH_LONG).show()
+                    } else {
+                        panoramaDraft = PanoramaDraft(cell.sourceUri, cell.displayName, cell.preview)
+                    }
+                }
+            }
         }
     }
 
     fun dismissCollageDraft() {
         collageDraft = null
+    }
+
+    /** A photo about to be split into carousel slides, open in the panorama editor. */
+    data class PanoramaDraft(val sourceUri: Uri, val displayName: String, val preview: android.graphics.Bitmap?)
+
+    var panoramaDraft by mutableStateOf<PanoramaDraft?>(null)
+        private set
+
+    /** Opens the panorama editor for a photo in the grid. */
+    fun startPanorama(item: MediaItem) {
+        if (item.isVideo || item.collage != null) {
+            Toast.makeText(context, PICK_HINT, Toast.LENGTH_LONG).show()
+            return
+        }
+        panoramaDraft = PanoramaDraft(item.sourceUri, item.displayName, item.preview)
+    }
+
+    fun dismissPanoramaDraft() {
+        panoramaDraft = null
+    }
+
+    /** Adds the slides as one item at the top of the grid and saves them. */
+    fun createPanorama(draft: PanoramaDraft, panorama: Panorama, settings: FrameSettings) {
+        val item = MediaItem(
+            sourceUri = draft.sourceUri,
+            isVideo = false,
+            displayName = draft.displayName,
+            settings = settings,
+            preview = draft.preview,
+            panorama = panorama,
+        )
+        items = listOf(item) + items
+        clearSelection()
+        panoramaDraft = null
+        refreshPanorama(item.id)
+    }
+
+    fun applyPanoramaEdit(id: String, panorama: Panorama, settings: FrameSettings) {
+        updateItem(id) { it.copy(panorama = panorama, settings = settings, isRendered = false, warning = null) }
+        refreshPanorama(id)
+    }
+
+    private fun refreshPanorama(id: String) {
+        viewModelScope.launch {
+            val item = items.firstOrNull { it.id == id } ?: return@launch
+            val preview = item.preview
+            val panorama = item.panorama
+            if (preview != null && panorama != null) {
+                val thumbnail = withContext(Dispatchers.Default) {
+                    renderPanoramaThumbnail(preview, panorama, item.settings, THUMBNAIL_SIZE)
+                }
+                updateItem(id) { it.copy(thumbnail = thumbnail) }
+            }
+            autoSavePhoto(id)
+        }
     }
 
     private fun newCollage(cells: List<CollageCell>) =
@@ -376,27 +442,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Read the item only now, so an edit made while waiting is what gets saved.
             val item = items.firstOrNull { it.id == id } ?: return
             try {
-                val savedUri = withContext(Dispatchers.Default) {
-                    val collage = item.collage
-                    val framed = if (collage != null) {
-                        renderCollage(context, collage, item.settings)
-                    } else {
-                        val source = PhotoProcessor.loadDownscaledBitmap(context, item.sourceUri, MAX_DECODE_DIMENSION)
-                        PhotoProcessor.frame(source, item.settings)
-                    }
-                    val uri = GallerySaver.saveImage(
-                        context,
-                        framed,
-                        if (collage != null) item.displayName else outputFileName(item.settings.format, item.displayName),
-                        replace = item.outputUri,
-                    )
-                    framed.recycle()
-                    uri
+                val saved = withContext(Dispatchers.Default) {
+                    val panorama = item.panorama
+                    if (panorama != null) savePanoramaSlides(item, panorama) else listOfNotNull(savePhoto(item))
                 }
                 updateItem(id) {
                     // A newer edit arrived meanwhile: it's still waiting for its own save.
-                    val current = it.settings == item.settings && it.collage == item.collage
-                    it.copy(outputUri = savedUri, isProcessing = !current, isRendered = current)
+                    val current = it.settings == item.settings && it.collage == item.collage && it.panorama == item.panorama
+                    it.copy(
+                        outputUri = saved.firstOrNull(),
+                        outputUris = if (item.panorama != null) saved else emptyList(),
+                        isProcessing = !current,
+                        isRendered = current,
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "autoSavePhoto failed for ${item.displayName}", e)
@@ -405,11 +463,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** A photo or photo collage, saved as one file. */
+    private fun savePhoto(item: MediaItem): Uri? {
+        val collage = item.collage
+        val framed = if (collage != null) {
+            renderCollage(context, collage, item.settings)
+        } else {
+            val source = PhotoProcessor.loadDownscaledBitmap(context, item.sourceUri, MAX_DECODE_DIMENSION)
+            PhotoProcessor.frame(source, item.settings)
+        }
+        val uri = GallerySaver.saveImage(
+            context,
+            framed,
+            if (collage != null) item.displayName else outputFileName(item.settings.format, item.displayName),
+            replace = item.outputUri,
+        )
+        framed.recycle()
+        return uri
+    }
+
+    /**
+     * Saves each slide of a panorama, overwriting the slides of the previous save; slides left
+     * over from an earlier, longer version (this app's own files) are deleted.
+     */
+    private fun savePanoramaSlides(item: MediaItem, panorama: Panorama): List<Uri> {
+        val (width, height) = slideSize(item.settings.format)
+        // Enough pixels to cover the whole strip, a little over to spare (portrait sources).
+        val needed = (maxOf(width * panorama.slides, height) * 1.25f).toInt().coerceAtMost(MAX_PANORAMA_DECODE)
+        val source = PhotoProcessor.loadDownscaledBitmap(context, item.sourceUri, needed)
+        val uris = (0 until panorama.slides).map { i ->
+            val slide = PanoramaRenderer.renderSlide(source, panorama, item.settings, i, width, height)
+            val uri = GallerySaver.saveImage(context, slide, slideFileName(item.displayName, i), replace = item.outputUris.getOrNull(i))
+            slide.recycle()
+            uri ?: throw IllegalStateException("Couldn't save slide ${i + 1}")
+        }
+        source.recycle()
+        item.outputUris.drop(panorama.slides).forEach { GallerySaver.deleteOwn(context, it) }
+        return uris
+    }
+
     private fun updateItem(id: String, transform: (MediaItem) -> MediaItem) {
         items = items.map { if (it.id == id) transform(it) else it }
     }
 
     private companion object {
         const val TAG = "Squareify"
+        const val PICK_HINT = "Pick one photo to split into carousel slides, or 2-9 photos and videos for a collage."
+        /** Longest side a panorama is decoded at for saving its slides. */
+        const val MAX_PANORAMA_DECODE = 12_000
     }
 }

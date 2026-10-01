@@ -11,10 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -52,6 +57,8 @@ fun EditSheet(
     item: MediaItem,
     onDismiss: () -> Unit,
     onApply: (FrameSettings) -> Unit,
+    /** Opens the panorama editor for this photo; null for videos. */
+    onSplitIntoSlides: (() -> Unit)? = null,
 ) {
     var settings by remember { mutableStateOf(item.settings) }
     var rendered by remember { mutableStateOf(item.thumbnail) }
@@ -172,6 +179,21 @@ fun EditSheet(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Apply")
+            }
+            if (onSplitIntoSlides != null) {
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onSplitIntoSlides()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                ) {
+                    Icon(Icons.Default.ViewCarousel, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Split into carousel slides")
+                }
             }
             Spacer(Modifier.height(24.dp))
         }

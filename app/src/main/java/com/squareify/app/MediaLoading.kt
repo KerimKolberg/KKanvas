@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import com.squareify.app.processing.CollageRenderer
+import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
 import kotlin.math.max
 import kotlin.math.min
@@ -20,6 +21,8 @@ const val PREVIEW_SIZE = 720
 const val THUMBNAIL_SIZE = 600
 const val LIVE_PREVIEW_SIZE = 900
 const val FULLSCREEN_SIZE = 1440
+/** A panorama is loaded this large for its editor and full-screen preview. */
+const val PANORAMA_EDITOR_SIZE = 2400
 
 fun queryDisplayName(context: Context, uri: Uri): String? =
     try {
@@ -118,6 +121,38 @@ fun renderCollage(context: Context, collage: Collage, settings: FrameSettings, m
         loadSourceImage(context, cell.sourceUri, cell.isVideo, needed)
     }
     return CollageRenderer.render(collage, sources, settings, w, h)
+}
+
+/** A panorama's whole strip, [height] px high (as wide as the slides make it). */
+fun renderPanoramaPreview(source: Bitmap, panorama: Panorama, settings: FrameSettings, height: Int): Bitmap {
+    val (slideW, slideH) = slideSize(settings.format)
+    val width = (height.toFloat() * slideW * panorama.slides / slideH).roundToInt()
+    return PanoramaRenderer.renderStrip(source, panorama, settings, width, height)
+}
+
+/** A panorama's strip, [width] px wide, with thin lines where one slide ends and the next begins. */
+fun renderPanoramaThumbnail(source: Bitmap, panorama: Panorama, settings: FrameSettings, width: Int): Bitmap {
+    val (slideW, slideH) = slideSize(settings.format)
+    val height = (width.toFloat() * slideH / (slideW * panorama.slides)).roundToInt().coerceAtLeast(1)
+    val strip = PanoramaRenderer.renderStrip(source, panorama, settings, width, height)
+    val paint = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        alpha = 200
+        strokeWidth = (width / 300f).coerceAtLeast(1.5f)
+    }
+    val canvas = android.graphics.Canvas(strip)
+    for (i in 1 until panorama.slides) {
+        val x = width.toFloat() * i / panorama.slides
+        canvas.drawLine(x, 0f, x, height.toFloat(), paint)
+    }
+    return strip
+}
+
+/** Gallery file name of slide [index] (from 0), e.g. "carousel_IMG_1234_1". */
+fun slideFileName(displayName: String, index: Int): String {
+    val dot = displayName.lastIndexOf('.')
+    val baseName = if (dot > 0) displayName.substring(0, dot) else displayName
+    return "carousel_${baseName}_${index + 1}"
 }
 
 /** Card-sized preview of what will be saved. */

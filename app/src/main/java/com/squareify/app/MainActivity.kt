@@ -228,7 +228,8 @@ fun SquarifyApp(viewModel: MainViewModel) {
                     },
                     onShare = { shareOutputs(context, selectedSaved) },
                     onRemove = viewModel::removeSelected,
-                    collageEnabled = selectedItems.size in 2..CollageLayout.MAX_PHOTOS,
+                    // One photo: split it into carousel slides.
+                    collageEnabled = selectedItems.size in 1..CollageLayout.MAX_PHOTOS,
                     onCollage = viewModel::startCollageFromSelection,
                 )
             }
@@ -277,7 +278,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Tap \"Add Photos/Videos\" to get started,\nor \"Collage\" to combine a few into one",
+                        "Tap \"Add Photos/Videos\" to get started.\n\"Collage\": pick 2-9 to combine them,\nor one wide photo to split into carousel slides.",
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -358,21 +359,42 @@ fun SquarifyApp(viewModel: MainViewModel) {
 
     items.firstOrNull { it.id == editingItemId }?.let { item ->
         val collage = item.collage
-        if (collage != null) {
-            CollageEditor(
+        val panorama = item.panorama
+        when {
+            collage != null -> CollageEditor(
                 initialCollage = collage,
                 initialSettings = item.settings,
                 isNew = false,
                 onDismiss = { editingItemId = null },
                 onApply = { c, s -> viewModel.applyCollageEdit(item.id, c, s) },
             )
-        } else {
-            EditSheet(
+            panorama != null -> PanoramaEditor(
+                sourceUri = item.sourceUri,
+                preview = item.preview,
+                initialPanorama = panorama,
+                initialSettings = item.settings,
+                isNew = false,
+                onDismiss = { editingItemId = null },
+                onApply = { p, s -> viewModel.applyPanoramaEdit(item.id, p, s) },
+            )
+            else -> EditSheet(
                 item = item,
                 onDismiss = { editingItemId = null },
                 onApply = { viewModel.applyEdit(item.id, it) },
+                onSplitIntoSlides = if (item.isVideo) null else ({ viewModel.startPanorama(item) }),
             )
         }
+    }
+    viewModel.panoramaDraft?.let { draft ->
+        PanoramaEditor(
+            sourceUri = draft.sourceUri,
+            preview = draft.preview,
+            initialPanorama = null,
+            initialSettings = viewModel.globalSettings,
+            isNew = true,
+            onDismiss = viewModel::dismissPanoramaDraft,
+            onApply = { p, s -> viewModel.createPanorama(draft, p, s) },
+        )
     }
     viewModel.collageDraft?.let { collage ->
         CollageEditor(
@@ -525,7 +547,8 @@ fun GlobalSettingsPanel(
 /** Opens the system share sheet (Instagram feed, story, DMs, …) for the saved outputs of [items]. */
 private fun shareOutputs(context: Context, items: List<MediaItem>) {
     val saved = items.filter { it.outputUri != null }
-    val uris = saved.mapNotNull { it.outputUri }
+    // A panorama shares all its slides, in order, ready to post as one carousel.
+    val uris = saved.flatMap { it.outputUris.ifEmpty { listOfNotNull(it.outputUri) } }
     if (uris.isEmpty()) return
     val send = if (uris.size == 1) {
         Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.first())

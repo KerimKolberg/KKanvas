@@ -86,6 +86,7 @@ fun MediaCard(
 
         val label = when {
             item.collage != null -> if (item.isVideo) "Video collage" else "Collage"
+            item.panorama != null -> "${item.panorama.slides} slides"
             item.isVideo -> "Video"
             else -> null
         }

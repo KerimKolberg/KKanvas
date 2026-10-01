@@ -45,8 +45,28 @@ fun PreviewDialog(item: MediaItem, onDismiss: () -> Unit) {
     var loading by remember(item.id) { mutableStateOf(true) }
     var showOriginal by remember { mutableStateOf(false) }
 
-    LaunchedEffect(item.id, item.settings, item.collage) {
+    LaunchedEffect(item.id, item.settings, item.collage, item.panorama) {
         loading = true
+        val panorama = item.panorama
+        if (panorama != null) {
+            // The whole strip, with lines where the slides meet; hold for the original photo.
+            val source = withContext(Dispatchers.IO) {
+                try {
+                    PhotoProcessor.loadDownscaledBitmap(context, item.sourceUri, PANORAMA_EDITOR_SIZE)
+                } catch (e: Exception) {
+                    Log.w("Squareify", "full-size panorama preview failed", e)
+                    null
+                }
+            }
+            if (source != null) {
+                original = source
+                rendered = withContext(Dispatchers.Default) {
+                    renderPanoramaThumbnail(source, panorama, item.settings, PANORAMA_EDITOR_SIZE)
+                }
+            }
+            loading = false
+            return@LaunchedEffect
+        }
         val collage = item.collage
         if (collage != null) {
             // A collage has no single original to compare with.

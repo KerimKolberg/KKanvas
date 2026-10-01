@@ -81,8 +81,11 @@ private val SELECTED_BORDER = Color(0xFF2563EB)
 private val SWATCH_BORDER = Color(0xFFCBD5E1)
 
 @Composable
-fun FormatSelector(selected: FrameFormat, onSelect: (FrameFormat) -> Unit) {
-    val formats = FrameFormat.entries
+fun FormatSelector(
+    selected: FrameFormat,
+    onSelect: (FrameFormat) -> Unit,
+    formats: List<FrameFormat> = FrameFormat.entries,
+) {
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         formats.forEachIndexed { index, format ->
             SegmentedButton(
@@ -114,18 +117,22 @@ fun StyleControls(
     photoColors: List<Int> = emptyList(),
     onPickFromPhoto: ((ColorSlot) -> Unit)? = null,
     sample: Bitmap? = null,
+    /** False where a border makes no sense (panorama slides must join up). */
+    showBorder: Boolean = true,
 ) {
     var tab by rememberSaveable { mutableStateOf(StyleTab.BACKGROUND) }
+    val tabs = StyleTab.entries.filter { showBorder || it != StyleTab.BORDER }
+    val shown = if (tab in tabs) tab else tabs.first()
     SecondaryTabRow(
-        selectedTabIndex = tab.ordinal,
+        selectedTabIndex = tabs.indexOf(shown),
         containerColor = Color.Transparent,
         modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
     ) {
-        StyleTab.entries.forEach { t ->
-            Tab(selected = tab == t, onClick = { tab = t }, text = { Text(t.title) })
+        tabs.forEach { t ->
+            Tab(selected = shown == t, onClick = { tab = t }, text = { Text(t.title) })
         }
     }
-    when (tab) {
+    when (shown) {
         StyleTab.BACKGROUND -> BackgroundControls(settings, onChange, photoColors, onPickFromPhoto)
         StyleTab.BORDER -> BorderControls(settings, onChange)
         StyleTab.ADJUST -> AdjustmentControls(settings, onChange, sample)

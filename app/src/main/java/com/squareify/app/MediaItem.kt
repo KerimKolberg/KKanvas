@@ -88,4 +88,8 @@ data class MediaItem(
     val originalTrashed: Boolean = false,
     /** Set for a collage; its photos are in the cells and [sourceUri] is the first one. */
     val collage: Collage? = null,
+    /** Set for a panorama split into carousel slides. */
+    val panorama: Panorama? = null,
+    /** A panorama's saved slides, in order; [outputUri] is the first. */
+    val outputUris: List<Uri> = emptyList(),
 )

@@ -24,7 +24,9 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   from the "Collage" button (then the picked media aren't added or saved on their own). Each
   cell is filled (zoom, drag to pan) or fitted; with the Blurred style a fitted cell is padded
   with a blur of its own photo. Arrows or hold-and-drag swap photos between cells.
-  Photo collages are saved 2160 px wide. With clips in it a collage is a video
+  Photo collages are saved 2160 px wide.
+- Panorama carousel: one wide photo (picked with "Collage", or "Split into carousel slides" in
+  its edit sheet) becomes 2-10 slides that join up seamlessly when swiped; shared in order. With clips in it a collage is a video
   (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
   clips freeze on their last frame or loop, and the sound comes from one chosen clip or none.
 
@@ -42,12 +44,15 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `SettingsControls.kt` | Format, background, border and adjustment controls, colour picker |
 | `MediaItem.kt` | `MediaItem`, `FrameSettings`, `FrameFormat`, `Border`, `Adjustments` |
 | `Collage.kt` | Collage layouts, cells, clip options, cell geometry |
+| `Panorama.kt`, `PanoramaEditor.kt` | Carousel slides from one wide photo: geometry and editor |
+| `Looks.kt` | Built-in looks and the user's saved ones |
 | `MediaLoading.kt` | Loading photos/video frames, thumbnails, collage previews, output file names |
 | `GallerySaver.kt` | Saves to Pictures/ and Movies/Squareify, overwriting earlier saves |
 | `SettingsStore.kt` | Remembers the settings for new media |
 | `RenderService.kt`, `RenderStateHolder.kt` | Background video rendering and its progress |
 | `processing/PhotoProcessor.kt` | Padding to a format, backgrounds, border, colour/sharpen/grain |
 | `processing/CollageRenderer.kt` | Draws a collage from its cells' pictures |
+| `processing/PanoramaRenderer.kt` | Draws a panorama strip, or one slide of it |
 | `processing/VideoProcessor.kt` | Single video: decode, pad each frame, encode, copy the sound |
 | `processing/VideoCollageProcessor.kt` | Video collage: one decoder per clip on a shared timeline |
 | `processing/GlFrameReader.kt` | Reads decoded frames back through OpenGL |
