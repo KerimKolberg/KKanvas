@@ -140,9 +140,21 @@ fun renderPanoramaThumbnail(source: Bitmap, panorama: Panorama, settings: FrameS
     return strip
 }
 
+/**
+ * Keeps read access to a picked photo or video after the app restarts, so saved projects can be
+ * edited again. Photo picker links allow this; some shared ones don't, which is fine.
+ */
+fun keepAccess(context: Context, uri: Uri) {
+    try {
+        context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    } catch (_: Exception) {
+    }
+}
+
 /** A photo for a carousel (placed later), or null if it can't be read. */
 fun loadCarouselPhoto(context: Context, uri: Uri): CarouselPhoto? =
     try {
+        keepAccess(context, uri)
         val preview = PhotoProcessor.loadDownscaledBitmap(context, uri, PREVIEW_SIZE)
         CarouselPhoto(
             sourceUri = uri,

@@ -45,12 +45,14 @@
   straighten / front / back / remove; "Create" menu (Collage, Carousel, Panorama slides).
 - Swipe preview for carousels and panoramas: Instagram-style pager with dots, plus a seam
   check (slivers of a photo on the next slide, slides with nothing on them).
+- Saved projects: the grid (every item, its edits, collages, panoramas, carousels) is kept as
+  JSON in the app's files and restored at launch; pictures rebuild from the originals, and
+  picked media keep read access across restarts (persistable photo-picker permission).
 
 ## Next
-1. **Saved projects**: keep the grid, collages, carousels and edits between launches.
-2. Photo shapes (circle, arch, pill, torn edge); stickers / overlays drawn in-app; per-photo
+1. Photo shapes (circle, arch, pill, torn edge); stickers / overlays drawn in-app; per-photo
    edits inside collages; gradient across all slides; undo/redo; "Post to Instagram" button.
-3. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.

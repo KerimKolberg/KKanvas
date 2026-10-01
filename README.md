@@ -19,6 +19,8 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   corners, shadow. Frames: thin white border, Polaroid, film strip.
 - Live preview while editing, full-screen preview on tap; hold either to see the original.
 - Saving again after an edit overwrites the earlier file instead of adding a copy.
+- The grid is saved: items, edits, collages, panoramas and carousels come back after the app
+  closes. If an original photo is gone, saved results can still be shared.
 - The settings for new media are remembered between launches; the grid survives rotation.
 - Long-press selects items: share them, remove them, move their originals to the phone's
   trash (restorable for 30 days under ⋮ → Recently deleted), or make a collage.
@@ -62,6 +64,7 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `MediaLoading.kt` | Loading photos/video frames, thumbnails, collage previews, output file names |
 | `GallerySaver.kt` | Saves to Pictures/ and Movies/Squareify, overwriting earlier saves |
 | `SettingsStore.kt` | Remembers the settings for new media |
+| `ProjectStore.kt`, `JsonCodec.kt` | Saves and restores the grid (JSON, every field optional) |
 | `RenderService.kt`, `RenderStateHolder.kt` | Background video rendering and its progress |
 | `processing/PhotoProcessor.kt` | Padding to a format, backgrounds, border, colour/sharpen/grain |
 | `processing/CollageRenderer.kt` | Draws a collage from its cells' pictures |

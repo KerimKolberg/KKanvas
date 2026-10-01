@@ -60,33 +60,7 @@ object LooksStore {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit { putString(KEY_LOOKS, array.toString()) }
     }
 
-    private fun Look.toJson() = JSONObject().apply {
-        put("name", name)
-        put("brightness", adjustments.brightness.toDouble())
-        put("saturation", adjustments.saturation.toDouble())
-        put("sharpness", adjustments.sharpness.toDouble())
-        put("grain", adjustments.grain.toDouble())
-        put("contrast", adjustments.contrast.toDouble())
-        put("warmth", adjustments.warmth.toDouble())
-        put("fade", adjustments.fade.toDouble())
-        put("vignette", adjustments.vignette.toDouble())
-    }
+    private fun Look.toJson() = adjustments.toJson(JSONObject().put("name", name))
 
-    private fun JSONObject.toLook(): Look {
-        val d = Adjustments()
-        fun float(key: String, default: Float) = optDouble(key, default.toDouble()).toFloat()
-        return Look(
-            getString("name"),
-            Adjustments(
-                brightness = float("brightness", d.brightness),
-                saturation = float("saturation", d.saturation),
-                sharpness = float("sharpness", d.sharpness),
-                grain = float("grain", d.grain),
-                contrast = float("contrast", d.contrast),
-                warmth = float("warmth", d.warmth),
-                fade = float("fade", d.fade),
-                vignette = float("vignette", d.vignette),
-            ),
-        )
-    }
+    private fun JSONObject.toLook() = Look(getString("name"), adjustmentsFromJson(this))
 }

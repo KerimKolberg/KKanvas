@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.squareify.app.processing.ColorExtractor
@@ -19,6 +20,7 @@ import com.squareify.app.processing.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -118,6 +120,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        // Bring back the grid from last time, then keep it saved as it changes.
+        viewModelScope.launch {
+            val restored = withContext(Dispatchers.IO) { ProjectStore.load(context) }
+            if (restored.isNotEmpty()) {
+                // Media shared in while this loaded stay on top.
+                items = items + restored.filter { r -> items.none { it.id == r.id } }
+                restorePictures(restored.map { it.id })
+            }
+            snapshotFlow { items }.collectLatest { list ->
+                delay(500) // Edits come in bursts (sliders, render progress); save once they settle.
+                withContext(Dispatchers.IO) { ProjectStore.save(context, list) }
+            }
+        }
     }
 
     fun updateGlobalSettings(settings: FrameSettings) {
@@ -149,6 +164,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadItem(uri: Uri, settings: FrameSettings): MediaItem? =
         try {
+            keepAccess(context, uri)
             val type = context.contentResolver.getType(uri)
             val isVideo = type != null && type.startsWith("video/")
             val name = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "media"
@@ -343,6 +359,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadCell(uri: Uri): CollageCell? =
         try {
+            keepAccess(context, uri)
             val type = context.contentResolver.getType(uri)
             val isVideo = type != null && type.startsWith("video/")
             val name = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "media"
@@ -525,6 +542,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.e(TAG, "autoSavePhoto failed for ${item.displayName}", e)
                 updateItem(id) { it.copy(isProcessing = false, error = e.message ?: e.toString()) }
             }
+        }
+    }
+
+    /**
+     * Rebuilds restored items' pictures (previews, thumbnails, colours) from their originals, one
+     * item at a time so the grid fills in without hogging the phone.
+     */
+    private suspend fun restorePictures(ids: List<String>) {
+        var missing = 0
+        for (id in ids) {
+            val item = items.firstOrNull { it.id == id } ?: continue
+            val sources = buildList {
+                add(item.sourceUri to item.isVideo)
+                item.collage?.cells?.forEach { add(it.sourceUri to it.isVideo) }
+                item.carousel?.photos?.forEach { add(it.sourceUri to false) }
+            }.distinct()
+            val previews = withContext(Dispatchers.IO) {
+                sources.associate { (uri, isVideo) ->
+                    uri to try {
+                        loadSourceImage(context, uri, isVideo, PREVIEW_SIZE)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            }
+            val gone = previews.values.count { it == null }
+            if (gone > 0) missing++
+            updateItem(id) { current ->
+                current.copy(
+                    preview = current.preview ?: previews[current.sourceUri],
+                    collage = current.collage?.let { c -> c.copy(cells = c.cells.map { it.copy(preview = it.preview ?: previews[it.sourceUri]) }) },
+                    carousel = current.carousel?.let { c -> c.copy(photos = c.photos.map { it.copy(preview = it.preview ?: previews[it.sourceUri]) }) },
+                    // Saved results can still be shared; only something not saved yet is stuck.
+                    error = if (gone > 0 && !current.isRendered) "The original isn't available any more" else current.error,
+                )
+            }
+            val updated = items.firstOrNull { it.id == id } ?: continue
+            val pictures = withContext(Dispatchers.Default) {
+                thumbnailFor(updated) to updated.preview?.takeIf { updated.collage == null && updated.carousel == null }
+                    ?.let { ColorExtractor.dominantColors(it) }
+            }
+            updateItem(id) { it.copy(thumbnail = pictures.first ?: it.thumbnail, photoColors = pictures.second ?: it.photoColors) }
+        }
+        if (missing > 0) {
+            Toast.makeText(context, "$missing item${if (missing == 1) "" else "s"} lost access to the original photos", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** The card picture for any kind of item, from the in-memory previews. */
+    private fun thumbnailFor(item: MediaItem): android.graphics.Bitmap? {
+        val collage = item.collage
+        val carousel = item.carousel
+        val panorama = item.panorama
+        val preview = item.preview
+        return when {
+            collage != null -> renderCollagePreview(collage, item.settings, THUMBNAIL_SIZE)
+            carousel != null -> renderCarouselThumbnail(carousel, item.settings, THUMBNAIL_SIZE)
+            preview == null -> null
+            panorama != null -> renderPanoramaThumbnail(preview, panorama, item.settings, THUMBNAIL_SIZE)
+            else -> renderThumbnail(preview, item.settings)
         }
     }
 
