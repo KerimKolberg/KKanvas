@@ -63,6 +63,7 @@ internal fun FrameSettings.toJson(): JSONObject = JSONObject().apply {
         put("shape", border.shape.name)
     })
     put("adjustments", adjustments.toJson())
+    put("texture", texture.name)
     text?.let { t ->
         put("text", JSONObject().apply {
             put("text", t.text)
@@ -112,6 +113,7 @@ internal fun frameSettingsFromJson(o: JSONObject): FrameSettings {
             shape = border.enum("shape", PhotoShape.RECTANGLE),
         ),
         adjustments = o.optJSONObject("adjustments")?.let(::adjustmentsFromJson) ?: d.adjustments,
+        texture = o.enum("texture", d.texture),
         text = text?.let { t ->
             val dt = TextOverlay()
             TextOverlay(
@@ -209,6 +211,18 @@ internal fun panoramaFromJson(o: JSONObject) = Panorama(
 
 internal fun Carousel.toJson(): JSONObject = JSONObject().apply {
     put("slides", slides)
+    put("stickers", JSONArray().apply {
+        stickers.forEach { s ->
+            put(JSONObject().apply {
+                put("kind", s.kind.name)
+                put("color", s.color)
+                put("x", s.placement.x.toDouble())
+                put("y", s.placement.y.toDouble())
+                put("width", s.placement.width.toDouble())
+                put("rotation", s.placement.rotation.toDouble())
+            })
+        }
+    })
     put("photos", JSONArray().apply {
         photos.forEach { p ->
             put(JSONObject().apply {
@@ -239,7 +253,15 @@ internal fun carouselFromJson(o: JSONObject): Carousel? {
         )
     }
     if (photos.isEmpty()) return null
-    return Carousel(o.optInt("slides", Carousel.MIN_SLIDES), photos)
+    val stickers = o.optJSONArray("stickers").mapObjects { s ->
+        val kind = s.enum("kind", StickerKind.HEART)
+        CarouselSticker(
+            kind = kind,
+            color = s.optInt("color", kind.defaultColor),
+            placement = Placement(s.float("x", 0.5f), s.float("y", 0.5f), s.float("width", 0.3f), s.float("rotation", 0f)),
+        )
+    }
+    return Carousel(o.optInt("slides", Carousel.MIN_SLIDES), photos, stickers)
 }
 
 /** An item as saved: what it is and how it's edited, not its pictures or what it's doing right now. */

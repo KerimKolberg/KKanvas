@@ -8,6 +8,14 @@ import java.util.UUID
 
 enum class PaddingStyle { SOLID, GRADIENT, BLUR }
 
+/** A texture laid over the whole picture (after the look, under text and logo). */
+enum class Texture(val label: String) {
+    NONE("None"),
+    PAPER("Paper"),
+    DUST("Dust"),
+    LIGHT_LEAK("Light leak"),
+}
+
 /** Which way a gradient background runs; on slides it spans all of them, so it flows across. */
 enum class GradientDirection(val label: String) {
     VERTICAL("Top to bottom"),
@@ -87,6 +95,7 @@ data class FrameSettings(
     val blurStrength: Float = DEFAULT_BLUR_STRENGTH,
     val border: Border = Border(),
     val adjustments: Adjustments = Adjustments(),
+    val texture: Texture = Texture.NONE,
     /** A caption on this item only; never part of the settings for new media. */
     val text: TextOverlay? = null,
     /** Trim, speed, sound and boomerang for a video; also never part of the settings for new media. */

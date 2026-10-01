@@ -56,11 +56,12 @@
 - Photo shapes: rectangle, circle, arch, pill, torn paper; for single photos (Border tab),
   each collage cell and each carousel photo. Per-photo colours (brightness, contrast,
   saturation, warmth, fade) for collage cells and carousel photos, on top of the post's look.
+- Textures (Adjust tab): paper, dust, light leak, made in code; across all slides on strips.
+  Stickers on carousels: tape, heart, star, sparkle, arrow, circle scribble, underline; drawn
+  in code, moved / resized / turned like photos, recoloured, duplicated.
 
 ## Next
-1. Stickers / overlays drawn in-app (tape, hearts, arrows, …) and textures (paper, dust,
-   light leak).
-2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.

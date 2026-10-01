@@ -297,6 +297,21 @@ private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings
     fun change(transform: Adjustments.() -> Adjustments) = onChange(settings.copy(adjustments = adjustments.transform()))
 
     LookPicker(current = adjustments, sample = sample, onPick = { onChange(settings.copy(adjustments = it)) })
+    Text("Texture", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 10.dp))
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Texture.entries.forEach { texture ->
+            FilterChip(
+                selected = settings.texture == texture,
+                onClick = { onChange(settings.copy(texture = texture)) },
+                label = { Text(texture.label) },
+            )
+        }
+    }
     Spacer(Modifier.height(8.dp))
     AdjustmentSlider("Brightness", adjustments.brightness, 0f, 2f) { change { copy(brightness = it) } }
     AdjustmentSlider("Contrast", adjustments.contrast, 0.5f, 1.5f) { change { copy(contrast = it) } }

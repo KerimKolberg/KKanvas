@@ -32,6 +32,10 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   Photo collages are saved 2160 px wide.
 - Text tab in each item's editor: a caption or title in one of 6 fonts, with size, colour,
   shadow or box behind it, alignment and height. Looks don't affect it.
+- Textures over the whole post (paper, dust, light leak) and, on carousels, stickers (tape,
+  hearts, stars, sparkles, arrows, scribbles, underlines) moved and turned like photos.
+- Shapes for photos (circle, arch, pill, torn paper), per-photo colours in collages and
+  carousels, undo/redo in every editor, and "Post to Instagram" from each card.
 - Logo tab: the kk logo as a watermark in a corner of everything saved (KK letters or the
   full logo; white, black or teal; size and opacity).
 - Carousel canvas ("Create" → Carousel): photos placed freely across 2-10 slides, also across
@@ -59,6 +63,9 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `Panorama.kt`, `PanoramaEditor.kt` | Carousel slides from one wide photo: geometry and editor |
 | `Carousel.kt`, `CarouselEditor.kt` | Carousel canvas: placement geometry, snapping, seam check; editor |
 | `SwipePreview.kt` | Instagram-style swipe preview of slides |
+| `PhotoControls.kt`, `processing/PhotoShapes.kt` | Photo shapes and per-photo colours |
+| `processing/Textures.kt`, `processing/StickerRenderer.kt` | Textures and stickers, drawn in code |
+| `EditHistory.kt` | Undo / redo for the editors |
 | `processing/StripRenderer.kt`, `processing/CarouselRenderer.kt` | Drawing strips that span slides, one slide at a time |
 | `Looks.kt` | Built-in looks and the user's saved ones |
 | `MediaLoading.kt` | Loading photos/video frames, thumbnails, collage previews, output file names |

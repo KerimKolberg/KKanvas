@@ -181,7 +181,7 @@ object PhotoProcessor {
             drawImage(canvas, source, fullRect(source), photo, Border())
         }
 
-        return applyAdjustments(output, settings.adjustments).also { drawText(it, settings) }
+        return applyAdjustments(output, settings.adjustments).also { drawOverlays(it, settings) }
     }
 
     /** A [width] x [height] box scaled to fit [area], centred. */
@@ -251,10 +251,11 @@ object PhotoProcessor {
         }
     }
 
-    /** Draws the caption and the watermark, if any, over the whole of [bitmap]. */
-    fun drawText(bitmap: Bitmap, settings: FrameSettings) {
+    /** Draws the texture, the caption and the watermark, if any, over the whole of [bitmap]. */
+    fun drawOverlays(bitmap: Bitmap, settings: FrameSettings) {
         val area = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
         val canvas = Canvas(bitmap)
+        Textures.draw(canvas, settings.texture, area)
         TextRenderer.draw(canvas, settings.text, area)
         WatermarkRenderer.draw(canvas, settings.watermark, area)
     }

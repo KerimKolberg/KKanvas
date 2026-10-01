@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -31,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
@@ -60,7 +62,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asComposeColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -74,6 +78,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.StickerRenderer
 import com.squareify.app.processing.TextRenderer
 import com.squareify.app.processing.WatermarkRenderer
 import kotlinx.coroutines.Dispatchers
@@ -108,9 +113,11 @@ fun CarouselEditor(
     var loading by remember { mutableStateOf(false) }
     val heightUnits = slideHeightUnits(settings.format)
 
+    // Indices count photos first, then stickers.
     fun update(index: Int, placement: Placement) {
-        carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = it[index].copy(placement = placement) })
+        carousel = carousel.withLayerPlacement(index, placement)
     }
+    var choosingSticker by remember { mutableStateOf(false) }
 
     // More photos, added in the middle of the slide most in need of one.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(Carousel.MAX_PHOTOS)) { uris ->
@@ -157,7 +164,7 @@ fun CarouselEditor(
                 onGestureEnd = { guides = null },
             )
             Text(
-                "Drag photos anywhere, across the seams. Two fingers resize and turn them. " +
+                "Drag photos and stickers anywhere, across the seams. Two fingers resize and turn them. " +
                     "Swipe an empty spot to scroll.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -201,6 +208,33 @@ fun CarouselEditor(
                 }
             }
 
+            val stickerIndex = selected?.let { it - carousel.photos.size }?.takeIf { it in carousel.stickers.indices }
+            if (stickerIndex != null) {
+                val sticker = carousel.stickers[stickerIndex]
+                fun change(updated: CarouselSticker) {
+                    carousel = carousel.copy(stickers = carousel.stickers.toMutableList().also { it[stickerIndex] = updated })
+                }
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = { change(sticker.copy(placement = sticker.placement.copy(rotation = 0f))) }) { Text("Straighten") }
+                    TextButton(onClick = {
+                        val copy = sticker.copy(placement = sticker.placement.copy(x = sticker.placement.x + 0.1f, y = (sticker.placement.y + 0.06f).coerceAtMost(0.95f)))
+                        carousel = carousel.copy(stickers = carousel.stickers + copy)
+                        selected = carousel.photos.size + carousel.stickers.lastIndex
+                    }) { Text("Duplicate") }
+                    TextButton(onClick = {
+                        carousel = carousel.copy(stickers = carousel.stickers.filterIndexed { i, _ -> i != stickerIndex })
+                        selected = null
+                    }) { Text("Remove") }
+                }
+                Text("Sticker color", style = MaterialTheme.typography.labelMedium)
+                ColorChoices(selected = sticker.color, onSelect = { change(sticker.copy(color = it)) })
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                 Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 FilledTonalIconButton(
@@ -234,6 +268,29 @@ fun CarouselEditor(
                     },
                     enabled = carousel.photos.isNotEmpty(),
                 ) { Text("Spread out evenly") }
+            }
+            TextButton(onClick = { choosingSticker = !choosingSticker }) {
+                Icon(Icons.Default.EmojiEmotions, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (choosingSticker) "Hide stickers" else "Add sticker")
+            }
+            if (choosingSticker) {
+                StickerPalette { kind ->
+                    // Onto the slide of whatever is selected, else the first.
+                    val slide = selected?.let { carousel.layers().getOrNull(it) }?.let { slideOf(it.first, carousel.slides) } ?: 0
+                    val width = when (kind) {
+                        StickerKind.TAPE -> 0.45f
+                        StickerKind.UNDERLINE -> 0.6f
+                        StickerKind.ARROW, StickerKind.CIRCLE -> 0.45f
+                        else -> 0.25f
+                    }
+                    val tilt = if (kind == StickerKind.TAPE) -12f else 0f
+                    carousel = carousel.copy(
+                        stickers = carousel.stickers + CarouselSticker(kind, kind.defaultColor, Placement(slide + 0.5f, 0.5f, width, tilt)),
+                    )
+                    selected = carousel.photos.size + carousel.stickers.lastIndex
+                    choosingSticker = false
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -359,14 +416,15 @@ private fun CarouselCanvas(
                         val c = currentCarousel
                         val unit = size.width.toFloat() / c.slides
                         val units = currentHeightUnits
-                        val hit = carouselPhotoAt(c.shapes(), units, down.position.x / unit, down.position.y / unit)
+                        val layers = c.layers()
+                        val hit = carouselPhotoAt(layers, units, down.position.x / unit, down.position.y / unit)
                         currentOnSelect(hit)
                         // On an empty spot the touch is left alone, so the canvas can scroll.
                         if (hit == null) return@awaitEachGesture
                         down.consume()
-                        val aspect = c.photos[hit].aspect
+                        val aspect = layers[hit].second
                         // Where the photo would be without snapping, so it follows the finger past snap points.
-                        var raw = c.photos[hit].placement
+                        var raw = layers[hit].first
                         var travel = Offset.Zero
                         var moving = false
                         try {
@@ -425,6 +483,18 @@ private fun CarouselCanvas(
                     )
                 }
             }
+            // Stickers, drawn live on top of the photos.
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawIntoCanvas { canvas ->
+                    carousel.stickers.forEach { sticker ->
+                        val rect = CarouselRenderer.placementRect(sticker.placement, sticker.kind.aspect, carousel.slides, size.width, size.height)
+                        canvas.nativeCanvas.save()
+                        canvas.nativeCanvas.rotate(sticker.placement.rotation, rect.centerX(), rect.centerY())
+                        StickerRenderer.draw(canvas.nativeCanvas, sticker.kind, sticker.color, rect)
+                        canvas.nativeCanvas.restore()
+                    }
+                }
+            }
             overlay?.let {
                 Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
             }
@@ -449,13 +519,14 @@ private fun CarouselCanvas(
                 // Lines the dragged photo snapped to.
                 guides?.guidesX?.forEach { gx -> drawLine(accent, Offset(gx * unit, 0f), Offset(gx * unit, size.height), 2.dp.toPx()) }
                 guides?.guidesY?.forEach { gy -> drawLine(accent, Offset(0f, gy * size.height), Offset(size.width, gy * size.height), 2.dp.toPx()) }
-                // The selected photo's outline, turned with it.
-                val photo = selected?.let { carousel.photos.getOrNull(it) }
-                if (photo != null) {
-                    val w = photo.placement.width * unit
-                    val h = w / photo.aspect
-                    val center = Offset(photo.placement.x * unit, photo.placement.y * size.height)
-                    rotate(photo.placement.rotation, center) {
+                // The selected photo's or sticker's outline, turned with it.
+                val layer = selected?.let { carousel.layers().getOrNull(it) }
+                if (layer != null) {
+                    val (placement, aspect) = layer
+                    val w = placement.width * unit
+                    val h = w / aspect
+                    val center = Offset(placement.x * unit, placement.y * size.height)
+                    rotate(placement.rotation, center) {
                         drawRect(
                             accent,
                             topLeft = Offset(center.x - w / 2, center.y - h / 2),
@@ -494,3 +565,36 @@ private fun PhotoActions(
 
 /** How close (on screen) a photo's edge or middle must come to a guide line to snap onto it. */
 private val SNAP_DISTANCE: Dp = 8.dp
+
+/** One tile per sticker, drawn by the same code as the saved slides. */
+@Composable
+private fun StickerPalette(onPick: (StickerKind) -> Unit) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StickerKind.entries.forEach { kind ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onPick(kind) }
+                    .padding(4.dp),
+            ) {
+                // A mid grey shows white and coloured stickers alike, in light and dark mode.
+                Canvas(
+                    modifier = Modifier
+                        .size(width = 60.dp, height = 42.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF6B7280)),
+                ) {
+                    val w = min(size.width * 0.86f, size.height * 0.8f * kind.aspect)
+                    val h = w / kind.aspect
+                    val rect = android.graphics.RectF(center.x - w / 2, center.y - h / 2, center.x + w / 2, center.y + h / 2)
+                    drawIntoCanvas { StickerRenderer.draw(it.nativeCanvas, kind, kind.defaultColor, rect) }
+                }
+                Text(kind.label, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}

@@ -39,7 +39,11 @@ data class CarouselPhoto(
 )
 
 /** Photos placed freely across [slides] carousel slides; later photos lie on top. */
-data class Carousel(val slides: Int, val photos: List<CarouselPhoto>) {
+data class Carousel(
+    val slides: Int,
+    val photos: List<CarouselPhoto>,
+    val stickers: List<CarouselSticker> = emptyList(),
+) {
     companion object {
         const val MIN_SLIDES = 2
         const val MAX_SLIDES = 10
@@ -187,3 +191,29 @@ private const val SLIVER = 0.04f
 
 /** Which slide (from 0) the photo's centre is on. */
 fun slideOf(placement: Placement, slides: Int): Int = floor(placement.x).toInt().coerceIn(0, slides - 1)
+
+/** Little drawings to put on a carousel, drawn in code (nothing to license). */
+enum class StickerKind(val label: String, val aspect: Float, val defaultColor: Int) {
+    TAPE("Tape", 3.2f, 0xFFF3E3B5.toInt()),
+    HEART("Heart", 1.1f, 0xFFE8505B.toInt()),
+    STAR("Star", 1.05f, 0xFFF5C542.toInt()),
+    SPARKLE("Sparkle", 1f, 0xFFFFFFFF.toInt()),
+    ARROW("Arrow", 2f, 0xFFFFFFFF.toInt()),
+    CIRCLE("Circle", 1.4f, 0xFFFFFFFF.toInt()),
+    UNDERLINE("Underline", 5f, 0xFFF5C542.toInt()),
+}
+
+/** A sticker placed on a carousel like a photo; stickers lie on top of all photos. */
+data class CarouselSticker(val kind: StickerKind, val color: Int, val placement: Placement)
+
+/** Photos, then stickers on top: everything that can be dragged, with its aspect ratio. */
+fun Carousel.layers(): List<Pair<Placement, Float>> = shapes() + stickers.map { it.placement to it.kind.aspect }
+
+/** The carousel with layer [index] (photos first, then stickers) moved to [placement]. */
+fun Carousel.withLayerPlacement(index: Int, placement: Placement): Carousel =
+    if (index < photos.size) {
+        copy(photos = photos.toMutableList().also { it[index] = it[index].copy(placement = placement) })
+    } else {
+        val s = index - photos.size
+        copy(stickers = stickers.toMutableList().also { it[s] = it[s].copy(placement = placement) })
+    }

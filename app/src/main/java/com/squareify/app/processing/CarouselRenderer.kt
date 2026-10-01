@@ -5,6 +5,7 @@ import android.graphics.RectF
 import com.squareify.app.Carousel
 import com.squareify.app.FrameSettings
 import com.squareify.app.FrameStyle
+import com.squareify.app.Placement
 
 /**
  * Draws a carousel: the background across all slides, then each photo where it was placed
@@ -29,11 +30,16 @@ object CarouselRenderer {
     /** Where photo [index] goes on a strip [stripWidth] wide and [stripHeight] high, before rotation. */
     fun photoRect(carousel: Carousel, index: Int, stripWidth: Float, stripHeight: Float): RectF {
         val photo = carousel.photos[index]
-        val unit = stripWidth / carousel.slides
-        val w = photo.placement.width * unit
-        val h = w / photo.aspect
-        val cx = photo.placement.x * unit
-        val cy = photo.placement.y * stripHeight
+        return placementRect(photo.placement, photo.aspect, carousel.slides, stripWidth, stripHeight)
+    }
+
+    /** A placement's box on a strip of [slides] slides, before rotation. */
+    fun placementRect(placement: Placement, aspect: Float, slides: Int, stripWidth: Float, stripHeight: Float): RectF {
+        val unit = stripWidth / slides
+        val w = placement.width * unit
+        val h = w / aspect
+        val cx = placement.x * unit
+        val cy = placement.y * stripHeight
         return RectF(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
     }
 
@@ -61,6 +67,14 @@ object CarouselRenderer {
                     photo.shape,
                     PhotoProcessor.colorFilter(photo.adjustments),
                 )
+                canvas.restore()
+            }
+            // Stickers lie on top of all the photos.
+            carousel.stickers.forEach { sticker ->
+                val rect = placementRect(sticker.placement, sticker.kind.aspect, carousel.slides, width, height)
+                canvas.save()
+                canvas.rotate(sticker.placement.rotation, rect.centerX(), rect.centerY())
+                StickerRenderer.draw(canvas, sticker.kind, sticker.color, rect)
                 canvas.restore()
             }
         }

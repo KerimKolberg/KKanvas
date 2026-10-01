@@ -21,7 +21,7 @@ internal object StripRenderer {
     fun renderStrip(settings: FrameSettings, width: Int, height: Int, content: Content): Bitmap {
         val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         content.draw(Canvas(output), width.toFloat(), height.toFloat())
-        return PhotoProcessor.applyAdjustments(output, settings.adjustments).also { PhotoProcessor.drawText(it, settings) }
+        return PhotoProcessor.applyAdjustments(output, settings.adjustments).also { PhotoProcessor.drawOverlays(it, settings) }
     }
 
     /**
@@ -48,7 +48,8 @@ internal object StripRenderer {
         val strip = RectF(0f, 0f, stripWidth, slideHeight.toFloat())
         val stripCanvas = Canvas(result).apply { translate(shift, 0f) }
         if (vignette > 0f) PhotoProcessor.drawVignette(stripCanvas, strip, vignette)
-        // Text and watermark sit on the strip as a whole too: text may run across slides.
+        // Texture, text and watermark sit on the strip as a whole too: text may run across slides.
+        Textures.draw(stripCanvas, settings.texture, strip)
         TextRenderer.draw(stripCanvas, settings.text, strip)
         WatermarkRenderer.draw(stripCanvas, settings.watermark, strip)
         return result

@@ -57,7 +57,7 @@ object CollageRenderer {
                     PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border, cell.shape, filter)
             }
         }
-        return PhotoProcessor.applyAdjustments(output, settings.adjustments).also { PhotoProcessor.drawText(it, settings) }
+        return PhotoProcessor.applyAdjustments(output, settings.adjustments).also { PhotoProcessor.drawOverlays(it, settings) }
     }
 
     /** The part of [source] a filled [cell] shows: the cell's aspect ratio, zoomed and panned. */

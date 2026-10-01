@@ -31,6 +31,7 @@ object SettingsStore {
     private const val KEY_WARMTH = "warmth"
     private const val KEY_FADE = "fade"
     private const val KEY_VIGNETTE = "vignette"
+    private const val KEY_TEXTURE = "texture"
 
     fun load(context: Context): FrameSettings {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -69,6 +70,9 @@ object SettingsStore {
                 fade = prefs.getFloat(KEY_FADE, defaults.adjustments.fade),
                 vignette = prefs.getFloat(KEY_VIGNETTE, defaults.adjustments.vignette),
             ),
+            texture = prefs.getString(KEY_TEXTURE, null)
+                ?.let { name -> Texture.entries.firstOrNull { it.name == name } }
+                ?: defaults.texture,
             watermark = Watermark(
                 enabled = prefs.getBoolean(KEY_WATERMARK, defaults.watermark.enabled),
                 mark = prefs.getString(KEY_WATERMARK_MARK, null)
@@ -105,6 +109,7 @@ object SettingsStore {
             putFloat(KEY_WARMTH, settings.adjustments.warmth)
             putFloat(KEY_FADE, settings.adjustments.fade)
             putFloat(KEY_VIGNETTE, settings.adjustments.vignette)
+            putString(KEY_TEXTURE, settings.texture.name)
             putBoolean(KEY_WATERMARK, settings.watermark.enabled)
             putString(KEY_WATERMARK_MARK, settings.watermark.mark.name)
             putString(KEY_WATERMARK_CORNER, settings.watermark.corner.name)
