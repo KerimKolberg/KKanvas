@@ -36,7 +36,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.concurrent.TimeUnit
-import kotlin.math.ceil
 
 /** Originals the app moved to the phone's trash, with restore and delete-now. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,9 +86,9 @@ fun RecentlyDeletedSheet(
 @Composable
 private fun TrashRow(entry: TrashedOriginal, onRestore: () -> Unit, onDeleteForever: () -> Unit) {
     val thumbnail = remember(entry.thumbnailPath) { entry.thumbnailPath?.let { BitmapFactory.decodeFile(it) } }
-    val daysLeft = ceil(
-        (entry.expiresAt - System.currentTimeMillis()).toDouble() / TimeUnit.DAYS.toMillis(1)
-    ).toInt().coerceAtLeast(0)
+    // Whole days left, rounded down like Samsung's Recycle Bin shows it.
+    val daysLeft = ((entry.expiresAt - System.currentTimeMillis()) / TimeUnit.DAYS.toMillis(1))
+        .toInt().coerceAtLeast(0)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
