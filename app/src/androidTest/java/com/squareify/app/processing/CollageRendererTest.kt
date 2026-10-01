@@ -62,6 +62,23 @@ class CollageRendererTest {
     }
 
     @Test
+    fun smartCropKeepsTheFacesInViewUntilMovedByHand() {
+        // A wide photo in a tall cell: only 100 of its 900 px width fit. The faces are at the far right.
+        val source = Bitmap.createBitmap(900, 300, Bitmap.Config.ARGB_8888)
+        val rect = android.graphics.RectF(0f, 0f, 100f, 300f)
+        val faces = cell().copy(focusX = 0.98f, focusY = 0.5f)
+        val crop = CollageRenderer.cropFor(source, rect, faces)
+        // Pushed as far right as the edge allows.
+        assertEquals(900f, crop.right, 0.5f)
+        // Centred on the faces when there's room.
+        val middle = CollageRenderer.cropFor(source, rect, faces.copy(focusX = 0.4f))
+        assertEquals(360f, middle.centerX(), 0.5f)
+        // Once the user drags, their position wins.
+        val moved = CollageRenderer.cropFor(source, rect, faces.copy(panned = true, panX = -1f))
+        assertEquals(0f, moved.left, 0.5f)
+    }
+
+    @Test
     fun zoomAndPanPickThePartOfThePhotoShown() {
         // Left half red, right half blue; zoomed in 2x and panned fully right, only blue is visible.
         val source = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)

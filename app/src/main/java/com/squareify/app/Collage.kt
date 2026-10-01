@@ -108,6 +108,11 @@ data class CollageCell(
     /** Where a filled photo sits in its cell, -1..1 per axis (0 = centred). */
     val panX: Float = 0f,
     val panY: Float = 0f,
+    /** Where the faces are (0–1 of the photo), found when the editor opens; 0.5 if none. */
+    val focusX: Float? = null,
+    val focusY: Float? = null,
+    /** The user has moved the photo by hand; until then a filled cell keeps the faces in view. */
+    val panned: Boolean = false,
 )
 
 data class Collage(
@@ -157,12 +162,18 @@ data class CollageSpec(
         val zoom: Float,
         val panX: Float,
         val panY: Float,
+        val focusX: Float? = null,
+        val focusY: Float? = null,
+        val panned: Boolean = false,
     ) : Serializable
 
     fun toCollage() = Collage(
         layout = layout,
         cells = cells.map {
-            CollageCell(Uri.parse(it.uri), it.displayName, null, it.isVideo, it.fit, it.zoom, it.panX, it.panY)
+            CollageCell(
+                Uri.parse(it.uri), it.displayName, null, it.isVideo, it.fit, it.zoom, it.panX, it.panY,
+                focusX = it.focusX, focusY = it.focusY, panned = it.panned,
+            )
         },
         spacing = spacing,
         shortClips = shortClips,
@@ -173,7 +184,10 @@ data class CollageSpec(
 fun Collage.toSpec() = CollageSpec(
     layout = layout,
     cells = cells.map {
-        CollageSpec.CellSpec(it.sourceUri.toString(), it.displayName, it.isVideo, it.fit, it.zoom, it.panX, it.panY)
+        CollageSpec.CellSpec(
+            it.sourceUri.toString(), it.displayName, it.isVideo, it.fit, it.zoom, it.panX, it.panY,
+            focusX = it.focusX, focusY = it.focusY, panned = it.panned,
+        )
     },
     spacing = spacing,
     shortClips = shortClips,

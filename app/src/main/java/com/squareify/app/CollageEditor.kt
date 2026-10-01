@@ -1,6 +1,7 @@
 package com.squareify.app
 
 import android.graphics.Bitmap
+import android.graphics.PointF
 import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -75,6 +76,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CollageRenderer
+import com.squareify.app.processing.FaceFinder
 import com.squareify.app.processing.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -137,14 +139,34 @@ fun CollageEditor(
         val sourcePerPixel = crop.width() / rect.width()
         val slackX = (source.width - crop.width()) / 2
         val slackY = (source.height - crop.height()) / 2
+        // Start from where the photo is now, which for a smart-cropped cell is around the faces.
+        val panX = if (slackX > 0.5f) (crop.centerX() - source.width / 2f) / slackX else cell.panX
+        val panY = if (slackY > 0.5f) (crop.centerY() - source.height / 2f) / slackY else cell.panY
         // Dragging right shows more of the left side, so the crop moves the other way.
         liveCell = index
         updateCell(
             index,
             cell.copy(
-                panX = if (slackX > 0.5f) (cell.panX - dx * sourcePerPixel / slackX).coerceIn(-1f, 1f) else cell.panX,
-                panY = if (slackY > 0.5f) (cell.panY - dy * sourcePerPixel / slackY).coerceIn(-1f, 1f) else cell.panY,
+                panX = if (slackX > 0.5f) (panX - dx * sourcePerPixel / slackX).coerceIn(-1f, 1f) else panX,
+                panY = if (slackY > 0.5f) (panY - dy * sourcePerPixel / slackY).coerceIn(-1f, 1f) else panY,
+                panned = true,
             ),
+        )
+    }
+
+    // Smart crop: find the faces in each photo once, so filled cells keep them in view.
+    LaunchedEffect(Unit) {
+        val todo = collage.cells.filter { it.focusX == null && it.preview != null }
+        if (todo.isEmpty()) return@LaunchedEffect
+        val found = withContext(Dispatchers.Default) {
+            todo.associate { cell -> cell.sourceUri to (FaceFinder.focus(cell.preview!!) ?: PointF(0.5f, 0.5f)) }
+        }
+        // Applied to the cells as they are now: they may have been moved around meanwhile.
+        collage = collage.copy(
+            cells = collage.cells.map { cell ->
+                val focus = found[cell.sourceUri]
+                if (focus != null && cell.focusX == null) cell.copy(focusX = focus.x, focusY = focus.y) else cell
+            },
         )
     }
 

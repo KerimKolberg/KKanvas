@@ -70,8 +70,16 @@ object CollageRenderer {
         }
         cropW /= collageCell.zoom
         cropH /= collageCell.zoom
-        val centerX = source.width / 2f + collageCell.panX * (source.width - cropW) / 2f
-        val centerY = source.height / 2f + collageCell.panY * (source.height - cropH) / 2f
+        val focusX = collageCell.focusX
+        val focusY = collageCell.focusY
+        val (centerX, centerY) = if (!collageCell.panned && focusX != null && focusY != null) {
+            // Smart crop: as close to the faces as the photo's edges allow.
+            (focusX * source.width).coerceIn(cropW / 2, source.width - cropW / 2) to
+                (focusY * source.height).coerceIn(cropH / 2, source.height - cropH / 2)
+        } else {
+            source.width / 2f + collageCell.panX * (source.width - cropW) / 2f to
+                source.height / 2f + collageCell.panY * (source.height - cropH) / 2f
+        }
         return RectF(centerX - cropW / 2, centerY - cropH / 2, centerX + cropW / 2, centerY + cropH / 2)
     }
 

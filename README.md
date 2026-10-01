@@ -24,6 +24,7 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   from the "Collage" button (then the picked media aren't added or saved on their own). Each
   cell is filled (zoom, drag to pan) or fitted; with the Blurred style a fitted cell is padded
   with a blur of its own photo. Arrows or hold-and-drag swap photos between cells.
+  Filled cells keep faces in view (smart crop) until you move the photo yourself.
   Photo collages are saved 2160 px wide.
 - Text tab in each item's editor: a caption or title in one of 6 fonts, with size, colour,
   shadow or box behind it, alignment and height. Looks don't affect it.

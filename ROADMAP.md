@@ -32,12 +32,13 @@
 - Frame styles for photos and videos: thin white border, Polaroid (deep bottom edge) and
   film strip (dark bands with sprocket holes along the long sides); corners and shadow apply
   to the frame, and the canvas grows so the photo keeps its resolution.
+- Smart crop: the collage editor finds faces (Android's built-in detector) and filled cells
+  keep them in view through layout and zoom changes, until the user drags the cell.
 
 ## Next
-1. **Smart crop**: keep faces in view when cropping (collages).
-2. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
-3. Watermark (kk logo).
-4. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
+2. Watermark (kk logo).
+3. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.
