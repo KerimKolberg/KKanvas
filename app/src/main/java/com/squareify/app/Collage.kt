@@ -113,6 +113,9 @@ data class CollageCell(
     val focusY: Float? = null,
     /** The user has moved the photo by hand; until then a filled cell keeps the faces in view. */
     val panned: Boolean = false,
+    val shape: PhotoShape = PhotoShape.RECTANGLE,
+    /** Colour changes for this photo only, on top of the collage's look. */
+    val adjustments: Adjustments = Adjustments(),
 )
 
 data class Collage(
@@ -165,6 +168,8 @@ data class CollageSpec(
         val focusX: Float? = null,
         val focusY: Float? = null,
         val panned: Boolean = false,
+        val shape: PhotoShape = PhotoShape.RECTANGLE,
+        val adjustments: Adjustments = Adjustments(),
     ) : Serializable
 
     fun toCollage() = Collage(
@@ -172,7 +177,7 @@ data class CollageSpec(
         cells = cells.map {
             CollageCell(
                 Uri.parse(it.uri), it.displayName, null, it.isVideo, it.fit, it.zoom, it.panX, it.panY,
-                focusX = it.focusX, focusY = it.focusY, panned = it.panned,
+                focusX = it.focusX, focusY = it.focusY, panned = it.panned, shape = it.shape, adjustments = it.adjustments,
             )
         },
         spacing = spacing,
@@ -186,7 +191,7 @@ fun Collage.toSpec() = CollageSpec(
     cells = cells.map {
         CollageSpec.CellSpec(
             it.sourceUri.toString(), it.displayName, it.isVideo, it.fit, it.zoom, it.panX, it.panY,
-            focusX = it.focusX, focusY = it.focusY, panned = it.panned,
+            focusX = it.focusX, focusY = it.focusY, panned = it.panned, shape = it.shape, adjustments = it.adjustments,
         )
     },
     spacing = spacing,

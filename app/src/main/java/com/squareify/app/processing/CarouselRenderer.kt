@@ -52,7 +52,15 @@ object CarouselRenderer {
                 val rect = photoRect(carousel, i, width, height)
                 canvas.save()
                 canvas.rotate(photo.placement.rotation, rect.centerX(), rect.centerY())
-                PhotoProcessor.drawImage(canvas, source, RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()), rect, border)
+                PhotoProcessor.drawImage(
+                    canvas,
+                    source,
+                    RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()),
+                    rect,
+                    border,
+                    photo.shape,
+                    PhotoProcessor.colorFilter(photo.adjustments),
+                )
                 canvas.restore()
             }
         }

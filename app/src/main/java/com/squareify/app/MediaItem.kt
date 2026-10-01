@@ -54,6 +54,15 @@ enum class FrameStyle(val label: String) {
     FILM("Film strip"),
 }
 
+/** The outline of a photo: Rectangle uses the border's rounded corners. */
+enum class PhotoShape(val label: String) {
+    RECTANGLE("Rectangle"),
+    CIRCLE("Circle"),
+    ARCH("Arch"),
+    PILL("Pill"),
+    TORN("Torn paper"),
+}
+
 /** Space and decoration around the photo. Each value is 0–1; [PhotoProcessor] maps them to sizes. */
 data class Border(
     val margin: Float = 0f,
@@ -61,6 +70,8 @@ data class Border(
     val shadow: Float = 0f,
     /** With a frame, the corners and shadow belong to the frame. */
     val frame: FrameStyle = FrameStyle.NONE,
+    /** A single photo's outline (without a frame); collage cells and carousel photos have their own. */
+    val shape: PhotoShape = PhotoShape.RECTANGLE,
 ) : Serializable
 
 /** How an item is padded and adjusted. The defaults for new items are saved by [SettingsStore]. */

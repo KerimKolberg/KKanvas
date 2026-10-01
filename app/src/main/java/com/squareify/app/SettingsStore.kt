@@ -16,6 +16,7 @@ object SettingsStore {
     private const val KEY_CORNER_RADIUS = "cornerRadius"
     private const val KEY_SHADOW = "shadow"
     private const val KEY_FRAME_STYLE = "frameStyle"
+    private const val KEY_SHAPE = "photoShape"
     private const val KEY_WATERMARK = "watermark"
     private const val KEY_WATERMARK_MARK = "watermarkMark"
     private const val KEY_WATERMARK_CORNER = "watermarkCorner"
@@ -54,6 +55,9 @@ object SettingsStore {
                 frame = prefs.getString(KEY_FRAME_STYLE, null)
                     ?.let { name -> FrameStyle.entries.firstOrNull { it.name == name } }
                     ?: defaults.border.frame,
+                shape = prefs.getString(KEY_SHAPE, null)
+                    ?.let { name -> PhotoShape.entries.firstOrNull { it.name == name } }
+                    ?: defaults.border.shape,
             ),
             adjustments = Adjustments(
                 brightness = prefs.getFloat(KEY_BRIGHTNESS, defaults.adjustments.brightness),
@@ -92,6 +96,7 @@ object SettingsStore {
             putFloat(KEY_CORNER_RADIUS, settings.border.cornerRadius)
             putFloat(KEY_SHADOW, settings.border.shadow)
             putString(KEY_FRAME_STYLE, settings.border.frame.name)
+            putString(KEY_SHAPE, settings.border.shape.name)
             putFloat(KEY_BRIGHTNESS, settings.adjustments.brightness)
             putFloat(KEY_SATURATION, settings.adjustments.saturation)
             putFloat(KEY_SHARPNESS, settings.adjustments.sharpness)

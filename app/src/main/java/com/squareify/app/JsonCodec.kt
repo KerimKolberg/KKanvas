@@ -60,6 +60,7 @@ internal fun FrameSettings.toJson(): JSONObject = JSONObject().apply {
         put("cornerRadius", border.cornerRadius.toDouble())
         put("shadow", border.shadow.toDouble())
         put("frame", border.frame.name)
+        put("shape", border.shape.name)
     })
     put("adjustments", adjustments.toJson())
     text?.let { t ->
@@ -108,6 +109,7 @@ internal fun frameSettingsFromJson(o: JSONObject): FrameSettings {
             cornerRadius = border.float("cornerRadius", 0f),
             shadow = border.float("shadow", 0f),
             frame = border.enum("frame", FrameStyle.NONE),
+            shape = border.enum("shape", PhotoShape.RECTANGLE),
         ),
         adjustments = o.optJSONObject("adjustments")?.let(::adjustmentsFromJson) ?: d.adjustments,
         text = text?.let { t ->
@@ -158,6 +160,8 @@ internal fun Collage.toJson(): JSONObject = JSONObject().apply {
                 c.focusX?.let { put("focusX", it.toDouble()) }
                 c.focusY?.let { put("focusY", it.toDouble()) }
                 put("panned", c.panned)
+                put("shape", c.shape.name)
+                put("adjustments", c.adjustments.toJson())
             })
         }
     })
@@ -177,6 +181,8 @@ internal fun collageFromJson(o: JSONObject): Collage? {
             focusX = c.floatOrNull("focusX"),
             focusY = c.floatOrNull("focusY"),
             panned = c.optBoolean("panned"),
+            shape = c.enum("shape", PhotoShape.RECTANGLE),
+            adjustments = c.optJSONObject("adjustments")?.let(::adjustmentsFromJson) ?: Adjustments(),
         )
     }
     if (cells.isEmpty()) return null
@@ -213,6 +219,8 @@ internal fun Carousel.toJson(): JSONObject = JSONObject().apply {
                 put("y", p.placement.y.toDouble())
                 put("width", p.placement.width.toDouble())
                 put("rotation", p.placement.rotation.toDouble())
+                put("shape", p.shape.name)
+                put("adjustments", p.adjustments.toJson())
             })
         }
     })
@@ -226,6 +234,8 @@ internal fun carouselFromJson(o: JSONObject): Carousel? {
             preview = null,
             aspect = p.float("aspect", 1f),
             placement = Placement(p.float("x", 0.5f), p.float("y", 0.5f), p.float("width", 0.8f), p.float("rotation", 0f)),
+            shape = p.enum("shape", PhotoShape.RECTANGLE),
+            adjustments = p.optJSONObject("adjustments")?.let(::adjustmentsFromJson) ?: Adjustments(),
         )
     }
     if (photos.isEmpty()) return null

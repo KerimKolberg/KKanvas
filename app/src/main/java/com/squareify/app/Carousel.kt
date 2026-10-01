@@ -33,6 +33,9 @@ data class CarouselPhoto(
     /** The photo's width / height. */
     val aspect: Float,
     val placement: Placement,
+    val shape: PhotoShape = PhotoShape.RECTANGLE,
+    /** Colour changes for this photo only, on top of the carousel's look. */
+    val adjustments: Adjustments = Adjustments(),
 )
 
 /** Photos placed freely across [slides] carousel slides; later photos lie on top. */

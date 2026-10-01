@@ -44,16 +44,17 @@ object CollageRenderer {
         cellRects(collage, settings, width, height).forEachIndexed { i, rect ->
             val cell = collage.cells.getOrNull(i) ?: return@forEachIndexed
             val source = sources.getOrNull(i) ?: return@forEachIndexed
+            val filter = PhotoProcessor.colorFilter(cell.adjustments)
             when {
                 cell.fit == CellFit.FILL ->
-                    PhotoProcessor.drawImage(canvas, source, cropFor(source, rect, cell), rect, settings.border)
+                    PhotoProcessor.drawImage(canvas, source, cropFor(source, rect, cell), rect, settings.border, cell.shape, filter)
                 settings.paddingStyle == PaddingStyle.BLUR -> {
-                    // The cell keeps its shape (corners, shadow); the photo inside only gets the corners.
-                    PhotoProcessor.drawBlurredFill(canvas, source, rect, settings)
-                    PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border.copy(shadow = 0f))
+                    // The cell keeps its shape (outline, shadow); the photo inside only gets the corners.
+                    PhotoProcessor.drawBlurredFill(canvas, source, rect, settings, cell.shape)
+                    PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border.copy(shadow = 0f), colorFilter = filter)
                 }
                 else ->
-                    PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border)
+                    PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border, cell.shape, filter)
             }
         }
         return PhotoProcessor.applyAdjustments(output, settings.adjustments).also { PhotoProcessor.drawText(it, settings) }

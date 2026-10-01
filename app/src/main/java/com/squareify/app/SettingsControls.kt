@@ -275,6 +275,10 @@ private fun BorderControls(settings: FrameSettings, onChange: (FrameSettings) ->
                 )
             }
         }
+        if (border.frame == FrameStyle.NONE) {
+            ShapeChips(selected = border.shape, onSelect = { onChange(settings.copy(border = border.copy(shape = it))) })
+            Spacer(Modifier.height(8.dp))
+        }
     }
     AdjustmentSlider("Margin", border.margin, 0f, 1f) {
         onChange(settings.copy(border = border.copy(margin = it)))

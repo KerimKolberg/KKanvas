@@ -78,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CollageRenderer
 import com.squareify.app.processing.FaceFinder
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.PhotoShapes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -389,11 +390,11 @@ private fun CollagePreview(
                     val cellInBitmap = CollageRenderer.cellRects(collage, settings, rendered.width, rendered.height)[liveIndex]
                     val crop = CollageRenderer.cropFor(liveSource, cellInBitmap, live)
                     val radius = PhotoProcessor.cornerRadius(settings.border, liveRect)
-                    livePaint.colorFilter = PhotoProcessor.colorFilter(settings.adjustments)
+                    livePaint.colorFilter = PhotoProcessor.colorFilter(live.adjustments, settings.adjustments)
                     drawIntoCanvas { canvas ->
                         val native = canvas.nativeCanvas
                         native.save()
-                        native.clipPath(android.graphics.Path().apply { addRoundRect(liveRect, radius, radius, android.graphics.Path.Direction.CW) })
+                        native.clipPath(PhotoShapes.path(live.shape, liveRect, radius))
                         val matrix = android.graphics.Matrix()
                         matrix.setRectToRect(crop, liveRect, android.graphics.Matrix.ScaleToFit.FILL)
                         native.drawBitmap(liveSource, matrix, livePaint)
@@ -509,6 +510,8 @@ private fun CellControls(
     if (cell.fit == CellFit.FILL) {
         AdjustmentSlider("Zoom", cell.zoom, 1f, 3f) { onChange(cell.copy(zoom = it)) }
     }
+    ShapeChips(selected = cell.shape, onSelect = { onChange(cell.copy(shape = it)) })
+    PhotoAdjustments(cell.adjustments) { onChange(cell.copy(adjustments = it)) }
 }
 
 /** Indices of the cells holding video clips, in cell order: clip 1, clip 2, … */

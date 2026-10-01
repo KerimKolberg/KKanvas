@@ -53,10 +53,13 @@
 - Gradient direction: top to bottom, left to right or diagonal; on carousels and panoramas it
   runs across all the slides.
 - Undo / redo in every editor (photo/video, collage, panorama, carousel); a drag is one step.
+- Photo shapes: rectangle, circle, arch, pill, torn paper; for single photos (Border tab),
+  each collage cell and each carousel photo. Per-photo colours (brightness, contrast,
+  saturation, warmth, fade) for collage cells and carousel photos, on top of the post's look.
 
 ## Next
-1. Photo shapes (circle, arch, pill, torn edge); stickers / overlays drawn in-app; per-photo
-   edits inside collages.
+1. Stickers / overlays drawn in-app (tape, hearts, arrows, …) and textures (paper, dust,
+   light leak).
 2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 

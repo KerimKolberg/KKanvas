@@ -6,6 +6,7 @@ import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
+import android.graphics.ColorFilter
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.LinearGradient
@@ -25,6 +26,7 @@ import com.squareify.app.FrameSettings
 import com.squareify.app.FrameStyle
 import com.squareify.app.GradientDirection
 import com.squareify.app.PaddingStyle
+import com.squareify.app.PhotoShape
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -173,7 +175,7 @@ object PhotoProcessor {
             outer.bottom - frame.bottom * scale,
         )
         if (border.frame == FrameStyle.NONE) {
-            drawImage(canvas, source, fullRect(source), photo, border)
+            drawImage(canvas, source, fullRect(source), photo, border, border.shape)
         } else {
             drawFrame(canvas, outer, photo, border)
             drawImage(canvas, source, fullRect(source), photo, Border())
@@ -313,9 +315,9 @@ object PhotoProcessor {
      * A collage cell fitted with Blurred style: fills [rect] with a blurred copy of the cell's own
      * [source] (with the border's corners and shadow); the whole picture then goes on top.
      */
-    fun drawBlurredFill(canvas: Canvas, source: Bitmap, rect: RectF, settings: FrameSettings) {
+    fun drawBlurredFill(canvas: Canvas, source: Bitmap, rect: RectF, settings: FrameSettings, shape: PhotoShape = PhotoShape.RECTANGLE) {
         val blurred = blurredCover(source, rect.width(), rect.height(), settings.blurStrength)
-        drawImage(canvas, blurred, fullRect(blurred), rect, settings.border)
+        drawImage(canvas, blurred, fullRect(blurred), rect, settings.border, shape)
         blurred.recycle()
     }
 
@@ -329,9 +331,18 @@ object PhotoProcessor {
      * Draws the [crop] of [source] into [rect], with the border's rounded corners and shadow.
      * Also used for each cell of a collage.
      */
-    fun drawImage(canvas: Canvas, source: Bitmap, crop: RectF, rect: RectF, border: Border) {
+    fun drawImage(
+        canvas: Canvas,
+        source: Bitmap,
+        crop: RectF,
+        rect: RectF,
+        border: Border,
+        shape: PhotoShape = PhotoShape.RECTANGLE,
+        /** Colour changes for this photo alone (e.g. one cell of a collage). */
+        colorFilter: ColorFilter? = null,
+    ) {
         val shortSide = min(rect.width(), rect.height())
-        val radius = cornerRadius(border, rect)
+        val outline = PhotoShapes.path(shape, rect, cornerRadius(border, rect))
 
         if (border.shadow > 0f) {
             // A photo-shaped rect whose blurred shadow peeks out; the photo then covers the rect itself.
@@ -343,17 +354,18 @@ object PhotoProcessor {
                 border.shadow * 0.02f * shortSide,
                 Color.argb((border.shadow * 170).roundToInt(), 0, 0, 0),
             )
-            canvas.drawRoundRect(rect, radius, radius, shadowPaint)
+            canvas.drawPath(outline, shadowPaint)
         }
 
-        // A bitmap shader keeps rounded edges anti-aliased (clipPath wouldn't on a software canvas).
+        // A bitmap shader keeps the outline anti-aliased (clipPath wouldn't on a software canvas).
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         val matrix = Matrix()
         matrix.setRectToRect(crop, rect, Matrix.ScaleToFit.FILL)
         shader.setLocalMatrix(matrix)
         paint.shader = shader
-        canvas.drawRoundRect(rect, radius, radius, paint)
+        paint.colorFilter = colorFilter
+        canvas.drawPath(outline, paint)
     }
 
     /**
@@ -390,7 +402,24 @@ object PhotoProcessor {
      * Saturation, warmth, contrast, brightness and fade (in that order) as one colour filter;
      * null when they're all unchanged.
      */
-    fun colorFilter(adjustments: Adjustments): ColorMatrixColorFilter? {
+    fun colorFilter(adjustments: Adjustments): ColorMatrixColorFilter? = colorMatrix(adjustments)?.let(::ColorMatrixColorFilter)
+
+    /**
+     * A photo's own colour changes followed by the whole post's, as one filter: what live previews
+     * show for a photo of a collage or carousel.
+     */
+    fun colorFilter(photo: Adjustments, whole: Adjustments): ColorMatrixColorFilter? {
+        val first = colorMatrix(photo)
+        val second = colorMatrix(whole)
+        val combined = when {
+            first == null -> second
+            second == null -> first
+            else -> first.apply { postConcat(second) }
+        }
+        return combined?.let(::ColorMatrixColorFilter)
+    }
+
+    private fun colorMatrix(adjustments: Adjustments): ColorMatrix? {
         val a = adjustments
         if (a.brightness == 1f && a.saturation == 1f && a.contrast == 1f && a.warmth == 0f && a.fade == 0f) return null
         val matrix = ColorMatrix()
@@ -411,7 +440,7 @@ object PhotoProcessor {
             val k = 0.2f * a.fade
             matrix.postConcat(channelMatrix(1 - k, 1 - k, 1 - k, 230f * k))
         }
-        return ColorMatrixColorFilter(matrix)
+        return matrix
     }
 
     /** Scales red, green and blue, then adds [offset] (0–255) to each. */

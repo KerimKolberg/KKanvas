@@ -192,6 +192,13 @@ fun CarouselEditor(
                         selected = null
                     },
                 )
+                val photo = carousel.photos[index]
+                ShapeChips(selected = photo.shape, onSelect = { shape ->
+                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(shape = shape) })
+                })
+                PhotoAdjustments(photo.adjustments) { adjustments ->
+                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(adjustments = adjustments) })
+                }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
@@ -331,7 +338,6 @@ private fun CarouselCanvas(
     val currentOnSelect by rememberUpdatedState(onSelect)
     val currentOnPlace by rememberUpdatedState(onPlace)
     val currentOnGestureEnd by rememberUpdatedState(onGestureEnd)
-    val colorFilter = remember(settings.adjustments) { PhotoProcessor.colorFilter(settings.adjustments)?.asComposeColorFilter() }
     val accent = MaterialTheme.colorScheme.primary
     val textMeasurer = rememberTextMeasurer()
     val numberStyle = MaterialTheme.typography.labelSmall.copy(color = Color.White)
@@ -400,19 +406,20 @@ private fun CarouselCanvas(
                     val h = w / photo.aspect
                     val left = slideWidth * photo.placement.x - w / 2
                     val top = canvasHeight * photo.placement.y - h / 2
-                    val radius = min(w.value, h.value) * settings.border.cornerRadius * 0.5f
                     Image(
                         preview.asImageBitmap(),
                         contentDescription = photo.displayName,
                         contentScale = ContentScale.FillBounds,
-                        colorFilter = colorFilter,
+                        colorFilter = remember(photo.adjustments, settings.adjustments) {
+                            PhotoProcessor.colorFilter(photo.adjustments, settings.adjustments)?.asComposeColorFilter()
+                        },
                         modifier = Modifier
                             .absoluteOffset(left, top)
                             .size(w, h)
                             .graphicsLayer {
                                 rotationZ = photo.placement.rotation
                                 shadowElevation = settings.border.shadow * 12.dp.toPx()
-                                shape = RoundedCornerShape(radius.dp)
+                                shape = photoOutline(photo.shape) { size -> min(size.width, size.height) * settings.border.cornerRadius * 0.5f }
                                 clip = true
                             },
                     )
