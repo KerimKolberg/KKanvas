@@ -62,7 +62,7 @@ object VideoProcessor {
         val displayWidth = if (rotated) probe.height else probe.width
         val displayHeight = if (rotated) probe.width else probe.height
         val (canvasWidth, canvasHeight) =
-            PhotoProcessor.canvasSize(displayWidth, displayHeight, settings.format)
+            PhotoProcessor.canvasSize(displayWidth, displayHeight, settings)
         val fps = probe.fps.coerceIn(1, 60)
 
         val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)

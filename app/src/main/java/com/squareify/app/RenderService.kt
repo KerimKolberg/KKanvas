@@ -7,12 +7,11 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.IBinder
-import android.os.Parcelable
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.IntentCompat
 import com.squareify.app.processing.VideoProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +32,8 @@ class RenderService : Service() {
         val sourceUri: Uri,
         val settings: FrameSettings,
         val displayName: String,
+        /** An earlier render of the same item, overwritten instead of adding a copy. */
+        val replaceUri: Uri?,
     )
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -54,22 +55,14 @@ class RenderService : Service() {
 
     private fun Intent.toRenderRequest(): RenderRequest? {
         val id = getStringExtra(EXTRA_ID) ?: return null
-        val sourceUri = getParcelableExtraCompat(EXTRA_SOURCE_URI, Uri::class.java) ?: return null
+        val sourceUri = IntentCompat.getParcelableExtra(this, EXTRA_SOURCE_URI, Uri::class.java) ?: return null
         return RenderRequest(
             id = id,
             sourceUri = sourceUri,
-            settings = FrameSettings(
-                format = FrameFormat.valueOf(getStringExtra(EXTRA_FORMAT) ?: "SQUARE"),
-                paddingStyle = PaddingStyle.valueOf(getStringExtra(EXTRA_PADDING_STYLE) ?: "SOLID"),
-                bgColor = getIntExtra(EXTRA_BG_COLOR, -1),
-                adjustments = Adjustments(
-                    brightness = getFloatExtra(EXTRA_BRIGHTNESS, 1f),
-                    saturation = getFloatExtra(EXTRA_SATURATION, 1f),
-                    sharpness = getFloatExtra(EXTRA_SHARPNESS, 0f),
-                    grain = getFloatExtra(EXTRA_GRAIN, 0f),
-                ),
-            ),
+            settings = IntentCompat.getSerializableExtra(this, EXTRA_SETTINGS, FrameSettings::class.java)
+                ?: FrameSettings(),
             displayName = getStringExtra(EXTRA_DISPLAY_NAME) ?: "video",
+            replaceUri = IntentCompat.getParcelableExtra(this, EXTRA_REPLACE_URI, Uri::class.java),
         )
     }
 
@@ -104,10 +97,11 @@ class RenderService : Service() {
                 RenderStateHolder.updateProgress(request.id, p)
                 updateNotification(request.displayName, p)
             }
-            val savedUri = saveVideoToGallery(
+            val savedUri = GallerySaver.saveVideo(
                 applicationContext,
                 outFile,
                 outputFileName(request.settings.format, request.displayName),
+                replace = request.replaceUri,
             )
             RenderStateHolder.markComplete(
                 request.id,
@@ -172,36 +166,18 @@ class RenderService : Service() {
 
         private const val EXTRA_ID = "id"
         private const val EXTRA_SOURCE_URI = "sourceUri"
-        private const val EXTRA_FORMAT = "format"
-        private const val EXTRA_PADDING_STYLE = "paddingStyle"
-        private const val EXTRA_BG_COLOR = "bgColor"
-        private const val EXTRA_BRIGHTNESS = "brightness"
-        private const val EXTRA_SATURATION = "saturation"
-        private const val EXTRA_SHARPNESS = "sharpness"
-        private const val EXTRA_GRAIN = "grain"
+        private const val EXTRA_SETTINGS = "settings"
         private const val EXTRA_DISPLAY_NAME = "displayName"
+        private const val EXTRA_REPLACE_URI = "replaceUri"
 
         fun enqueue(context: Context, item: MediaItem) {
             val intent = Intent(context, RenderService::class.java)
             intent.putExtra(EXTRA_ID, item.id)
             intent.putExtra(EXTRA_SOURCE_URI, item.sourceUri)
-            intent.putExtra(EXTRA_FORMAT, item.settings.format.name)
-            intent.putExtra(EXTRA_PADDING_STYLE, item.settings.paddingStyle.name)
-            intent.putExtra(EXTRA_BG_COLOR, item.settings.bgColor)
-            intent.putExtra(EXTRA_BRIGHTNESS, item.settings.adjustments.brightness)
-            intent.putExtra(EXTRA_SATURATION, item.settings.adjustments.saturation)
-            intent.putExtra(EXTRA_SHARPNESS, item.settings.adjustments.sharpness)
-            intent.putExtra(EXTRA_GRAIN, item.settings.adjustments.grain)
+            intent.putExtra(EXTRA_SETTINGS, item.settings)
             intent.putExtra(EXTRA_DISPLAY_NAME, item.displayName)
+            item.outputUri?.let { intent.putExtra(EXTRA_REPLACE_URI, it) }
             context.startForegroundService(intent)
         }
     }
 }
-
-private fun <T : Parcelable> Intent.getParcelableExtraCompat(key: String, clazz: Class<T>): T? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        getParcelableExtra(key, clazz)
-    } else {
-        @Suppress("DEPRECATION")
-        getParcelableExtra(key)
-    }

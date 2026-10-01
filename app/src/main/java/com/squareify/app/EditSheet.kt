@@ -1,0 +1,189 @@
+package com.squareify.app
+
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import com.squareify.app.processing.PhotoProcessor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.min
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditSheet(
+    item: MediaItem,
+    onDismiss: () -> Unit,
+    onApply: (FrameSettings) -> Unit,
+) {
+    var settings by remember { mutableStateOf(item.settings) }
+    var rendered by remember { mutableStateOf(item.thumbnail) }
+    var showOriginal by remember { mutableStateOf(false) }
+    // Set while the eyedropper is active: which colour a tap on the photo fills in.
+    var pickingSlot by remember { mutableStateOf<ColorSlot?>(null) }
+    val source = item.preview
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+
+    // Live preview: re-render on every change; a newer change cancels the older render.
+    LaunchedEffect(settings) {
+        if (source == null) return@LaunchedEffect
+        delay(50)
+        rendered = withContext(Dispatchers.Default) {
+            PhotoProcessor.frameFitting(source, settings, LIVE_PREVIEW_SIZE)
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(
+                "Edit: ${item.displayName}",
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(8.dp))
+
+            val picking = pickingSlot != null
+            val shown = if (picking || showOriginal) source else rendered
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(280.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF1F5F9))
+                    .pointerInput(picking, source) {
+                        if (picking && source != null) {
+                            detectTapGestures { offset ->
+                                val color = pickPixel(source, size, offset) ?: return@detectTapGestures
+                                settings = if (pickingSlot == ColorSlot.SECONDARY) {
+                                    settings.copy(bgColor2 = color)
+                                } else {
+                                    settings.copy(bgColor = color)
+                                }
+                                pickingSlot = null
+                            }
+                        } else {
+                            detectTapGestures(onPress = {
+                                showOriginal = true
+                                tryAwaitRelease()
+                                showOriginal = false
+                            })
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                shown?.let {
+                    Image(
+                        bitmap = it.asImageBitmap(),
+                        contentDescription = if (shown === source) "Original" else "Preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+            Text(
+                when {
+                    picking -> "Tap the photo to pick a color"
+                    showOriginal -> "Original"
+                    source != null -> "Hold the preview to see the original"
+                    else -> ""
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 4.dp),
+            )
+            if (picking) {
+                TextButton(
+                    onClick = { pickingSlot = null },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) { Text("Cancel") }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
+            StyleControls(
+                settings = settings,
+                onChange = { settings = it },
+                photoColors = item.photoColors,
+                onPickFromPhoto = if (source != null) {
+                    { slot ->
+                        pickingSlot = slot
+                        // The preview is at the top; bring it into view to tap on.
+                        scope.launch { scrollState.animateScrollTo(0) }
+                    }
+                } else {
+                    null
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    onApply(settings)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Apply")
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** The colour of [bitmap] under [tap], for an image drawn with ContentScale.Fit into a box of [boxSize]. */
+private fun pickPixel(bitmap: Bitmap, boxSize: IntSize, tap: Offset): Int? {
+    val scale = min(boxSize.width / bitmap.width.toFloat(), boxSize.height / bitmap.height.toFloat())
+    val left = (boxSize.width - bitmap.width * scale) / 2
+    val top = (boxSize.height - bitmap.height * scale) / 2
+    val x = ((tap.x - left) / scale).toInt()
+    val y = ((tap.y - top) / scale).toInt()
+    if (x !in 0 until bitmap.width || y !in 0 until bitmap.height) return null
+    return bitmap.getPixel(x, y) or 0xFF000000.toInt()
+}

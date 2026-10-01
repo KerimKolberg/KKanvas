@@ -9,6 +9,11 @@ object SettingsStore {
     private const val KEY_FORMAT = "format"
     private const val KEY_PADDING_STYLE = "paddingStyle"
     private const val KEY_BG_COLOR = "bgColor"
+    private const val KEY_BG_COLOR_2 = "bgColor2"
+    private const val KEY_BLUR_STRENGTH = "blurStrength"
+    private const val KEY_MARGIN = "margin"
+    private const val KEY_CORNER_RADIUS = "cornerRadius"
+    private const val KEY_SHADOW = "shadow"
     private const val KEY_BRIGHTNESS = "brightness"
     private const val KEY_SATURATION = "saturation"
     private const val KEY_SHARPNESS = "sharpness"
@@ -25,6 +30,13 @@ object SettingsStore {
                 ?.let { name -> PaddingStyle.entries.firstOrNull { it.name == name } }
                 ?: defaults.paddingStyle,
             bgColor = prefs.getInt(KEY_BG_COLOR, defaults.bgColor),
+            bgColor2 = prefs.getInt(KEY_BG_COLOR_2, defaults.bgColor2),
+            blurStrength = prefs.getFloat(KEY_BLUR_STRENGTH, defaults.blurStrength),
+            border = Border(
+                margin = prefs.getFloat(KEY_MARGIN, defaults.border.margin),
+                cornerRadius = prefs.getFloat(KEY_CORNER_RADIUS, defaults.border.cornerRadius),
+                shadow = prefs.getFloat(KEY_SHADOW, defaults.border.shadow),
+            ),
             adjustments = Adjustments(
                 brightness = prefs.getFloat(KEY_BRIGHTNESS, defaults.adjustments.brightness),
                 saturation = prefs.getFloat(KEY_SATURATION, defaults.adjustments.saturation),
@@ -39,6 +51,11 @@ object SettingsStore {
             putString(KEY_FORMAT, settings.format.name)
             putString(KEY_PADDING_STYLE, settings.paddingStyle.name)
             putInt(KEY_BG_COLOR, settings.bgColor)
+            putInt(KEY_BG_COLOR_2, settings.bgColor2)
+            putFloat(KEY_BLUR_STRENGTH, settings.blurStrength)
+            putFloat(KEY_MARGIN, settings.border.margin)
+            putFloat(KEY_CORNER_RADIUS, settings.border.cornerRadius)
+            putFloat(KEY_SHADOW, settings.border.shadow)
             putFloat(KEY_BRIGHTNESS, settings.adjustments.brightness)
             putFloat(KEY_SATURATION, settings.adjustments.saturation)
             putFloat(KEY_SHARPNESS, settings.adjustments.sharpness)
