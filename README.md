@@ -38,9 +38,11 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   carousels, undo/redo in every editor, and "Post to Instagram" from each card.
 - Logo tab: the kk logo as a watermark in a corner of everything saved (KK letters or the
   full logo; white, black or teal; size and opacity).
-- Carousel canvas ("Create" → Carousel): photos placed freely across 2-10 slides, also across
-  the seams; drag, pinch to resize and turn, snapping guides. "Preview the swipe" shows the
-  slides as on Instagram and warns about slivers at the seams or empty slides.
+- Carousel canvas ("Create" → Carousel): up to 100 photos placed freely across 2-20 slides,
+  also across the seams; drag, pinch to resize and turn, snapping guides. Templates arrange
+  them in one tap (grids, contact sheet, gallery rows, Polaroid wall, seamless hero …).
+  "Preview the swipe" shows the slides as on Instagram and warns about slivers at the seams
+  or empty slides.
 - Panorama carousel: one wide photo (picked with "Collage", or "Split into carousel slides" in
   its edit sheet) becomes 2-10 slides that join up seamlessly when swiped; shared in order. With clips in it a collage is a video
   (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
