@@ -62,6 +62,7 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `Collage.kt` | Collage layouts, cells, clip options, cell geometry |
 | `Panorama.kt`, `PanoramaEditor.kt` | Carousel slides from one wide photo: geometry and editor |
 | `Carousel.kt`, `CarouselEditor.kt` | Carousel canvas: placement geometry, snapping, seam check; editor |
+| `CarouselTemplates.kt` | Carousel templates: the layouts, as plain geometry |
 | `SwipePreview.kt` | Instagram-style swipe preview of slides |
 | `PhotoControls.kt`, `processing/PhotoShapes.kt` | Photo shapes and per-photo colours |
 | `processing/Textures.kt`, `processing/StickerRenderer.kt` | Textures and stickers, drawn in code |

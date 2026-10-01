@@ -1,5 +1,12 @@
 package com.squareify.app
 
+import kotlin.math.abs
+import androidx.compose.material3.FilterChip
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.foundation.layout.BoxWithConstraints
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -118,13 +125,15 @@ fun CarouselEditor(
         carousel = carousel.withLayerPlacement(index, placement)
     }
     var choosingSticker by remember { mutableStateOf(false) }
+    var template by remember { mutableStateOf<CarouselTemplate?>(null) }
 
     // More photos, added in the middle of the slide most in need of one.
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(Carousel.MAX_PHOTOS)) { uris ->
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(pickLimit(Carousel.MAX_PHOTOS))) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         loading = true
         scope.launch {
-            val added = withContext(Dispatchers.IO) { uris.mapNotNull { loadCarouselPhoto(context, it) } }
+            val size = carouselPreviewSize(carousel.photos.size + uris.size)
+            val added = withContext(Dispatchers.IO) { uris.mapNotNull { loadCarouselPhoto(context, it, size) } }
             var photos = carousel.photos
             added.take(Carousel.MAX_PHOTOS - photos.size).forEach { photo ->
                 val counts = (0 until carousel.slides).map { s -> photos.count { slideOf(it.placement, carousel.slides) == s } }
@@ -173,13 +182,25 @@ fun CarouselEditor(
                     .fillMaxWidth()
                     .padding(top = 4.dp),
             )
+            TemplatePicker(
+                aspects = carousel.photos.map { it.aspect },
+                heightUnits = heightUnits,
+                selected = template,
+                onPick = { picked ->
+                    // Photos and look change together: one undo step.
+                    carousel = applyTemplate(picked, carousel, heightUnits)
+                    settings = templateSettings(picked, settings)
+                    template = picked
+                    selected = null
+                },
+            )
 
             val index = selected?.takeIf { it < carousel.photos.size }
             if (index != null) {
                 PhotoActions(
                     onFitSlide = {
                         val photo = carousel.photos[index]
-                        update(index, fitSlidePlacement(slideOf(photo.placement, carousel.slides), photo.aspect, heightUnits))
+                        update(index, fitSlidePlacement(slideOf(photo.placement, carousel.slides), photo.boxAspect, heightUnits))
                     },
                     onStraighten = { update(index, carousel.photos[index].placement.copy(rotation = 0f)) },
                     onFront = {
@@ -200,9 +221,14 @@ fun CarouselEditor(
                     },
                 )
                 val photo = carousel.photos[index]
-                ShapeChips(selected = photo.shape, onSelect = { shape ->
-                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(shape = shape) })
-                })
+                CropChoices(photo) { changed ->
+                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = changed })
+                }
+                if (!photo.framed) {
+                    ShapeChips(selected = photo.shape, onSelect = { shape ->
+                        carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(shape = shape) })
+                    })
+                }
                 PhotoAdjustments(photo.adjustments) { adjustments ->
                     carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(adjustments = adjustments) })
                 }
@@ -263,7 +289,7 @@ fun CarouselEditor(
                 }
                 TextButton(
                     onClick = {
-                        val placements = spreadPlacements(carousel.photos.map { it.aspect }, carousel.slides, heightUnits)
+                        val placements = spreadPlacements(carousel.photos.map { it.boxAspect }, carousel.slides, heightUnits)
                         carousel = carousel.copy(photos = carousel.photos.zip(placements) { p, place -> p.copy(placement = place) })
                     },
                     enabled = carousel.photos.isNotEmpty(),
@@ -461,25 +487,16 @@ private fun CarouselCanvas(
                 val preview = photo.preview
                 if (preview != null) {
                     val w = slideWidth * photo.placement.width
-                    val h = w / photo.aspect
+                    val h = w / photo.boxAspect
                     val left = slideWidth * photo.placement.x - w / 2
                     val top = canvasHeight * photo.placement.y - h / 2
-                    Image(
-                        preview.asImageBitmap(),
-                        contentDescription = photo.displayName,
-                        contentScale = ContentScale.FillBounds,
-                        colorFilter = remember(photo.adjustments, settings.adjustments) {
-                            PhotoProcessor.colorFilter(photo.adjustments, settings.adjustments)?.asComposeColorFilter()
-                        },
+                    CarouselPhotoView(
+                        photo = photo,
+                        preview = preview,
+                        settings = settings,
                         modifier = Modifier
                             .absoluteOffset(left, top)
-                            .size(w, h)
-                            .graphicsLayer {
-                                rotationZ = photo.placement.rotation
-                                shadowElevation = settings.border.shadow * 12.dp.toPx()
-                                shape = photoOutline(photo.shape) { size -> min(size.width, size.height) * settings.border.cornerRadius * 0.5f }
-                                clip = true
-                            },
+                            .size(w, h),
                     )
                 }
             }
@@ -596,5 +613,149 @@ private fun StickerPalette(onPick: (StickerKind) -> Unit) {
                 Text(kind.label, style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+}
+
+/** One photo on the live canvas: cropped as it will be, in its shape or its white print. */
+@Composable
+private fun CarouselPhotoView(photo: CarouselPhoto, preview: Bitmap, settings: FrameSettings, modifier: Modifier) {
+    val image = remember(preview) { preview.asImageBitmap() }
+    val crop = remember(preview, photo.crop) { centerCrop(preview.width, preview.height, photo.crop) }
+    val painter = remember(image, crop) {
+        BitmapPainter(
+            image,
+            IntOffset(crop.left.roundToInt(), crop.top.roundToInt()),
+            IntSize(crop.width.roundToInt().coerceAtLeast(1), crop.height.roundToInt().coerceAtLeast(1)),
+        )
+    }
+    val filter = remember(photo.adjustments, settings.adjustments) {
+        PhotoProcessor.colorFilter(photo.adjustments, settings.adjustments)?.asComposeColorFilter()
+    }
+    if (photo.framed) {
+        BoxWithConstraints(
+            modifier = modifier
+                .graphicsLayer {
+                    rotationZ = photo.placement.rotation
+                    shadowElevation = (2.dp + 8.dp * settings.border.shadow).toPx()
+                    shape = RoundedCornerShape(2.dp)
+                    clip = true
+                }
+                .background(Color(0xFFFCFBF7)),
+        ) {
+            val photoWidth = maxWidth / (1 + 2 * PRINT_SIDE)
+            val side = photoWidth * PRINT_SIDE
+            Image(
+                painter,
+                contentDescription = photo.displayName,
+                contentScale = ContentScale.FillBounds,
+                colorFilter = filter,
+                modifier = Modifier
+                    .absoluteOffset(side, side)
+                    .size(photoWidth, photoWidth / photo.shownAspect),
+            )
+        }
+    } else {
+        Image(
+            painter,
+            contentDescription = photo.displayName,
+            contentScale = ContentScale.FillBounds,
+            colorFilter = filter,
+            modifier = modifier.graphicsLayer {
+                rotationZ = photo.placement.rotation
+                shadowElevation = settings.border.shadow * 12.dp.toPx()
+                shape = photoOutline(photo.shape) { size -> min(size.width, size.height) * settings.border.cornerRadius * 0.5f }
+                clip = true
+            },
+        )
+    }
+}
+
+/**
+ * One tile per template, each a little drawing of the first two slides laid out with these very
+ * photos, and how many slides it takes. Templates that would need more than 20 slides are greyed.
+ */
+@Composable
+private fun TemplatePicker(aspects: List<Float>, heightUnits: Float, selected: CarouselTemplate?, onPick: (CarouselTemplate) -> Unit) {
+    val layouts = remember(aspects, heightUnits) {
+        CarouselTemplate.entries.associateWith { if (it.fits(aspects.size)) arrangeTemplate(it, aspects, heightUnits) else null }
+    }
+    val accent = MaterialTheme.colorScheme.primary
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    val paper = MaterialTheme.colorScheme.surfaceVariant
+    Text("Templates", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CarouselTemplate.entries.forEach { template ->
+            val layout = layouts[template]
+            val isSelected = template == selected
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .width(96.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(enabled = layout != null) { onPick(template) }
+                    .graphicsLayer { alpha = if (layout != null) 1f else 0.4f }
+                    .padding(4.dp),
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .width(88.dp)
+                        .height(44.dp * heightUnits),
+                ) {
+                    val slide = size.width / 2
+                    for (s in 0 until 2) {
+                        drawRoundRect(
+                            color = if (isSelected) accent.copy(alpha = 0.18f) else paper,
+                            topLeft = Offset(s * slide + 1.dp.toPx(), 0f),
+                            size = androidx.compose.ui.geometry.Size(slide - 2.dp.toPx(), size.height),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+                        )
+                    }
+                    layout?.slots?.forEachIndexed { k, slot ->
+                        if (slot.placement.x - slot.placement.width / 2 >= 2f) return@forEachIndexed
+                        val box = placementBox(slot.placement, slot.boxAspect(aspects[layout.order[k]]), heightUnits)
+                        val center = Offset((box.left + box.right) / 2 * slide, (box.top + box.bottom) / 2 / heightUnits * size.height)
+                        rotate(slot.placement.rotation, center) {
+                            drawRect(
+                                color = if (slot.framed) Color.White else if (isSelected) accent else ink.copy(alpha = 0.7f),
+                                topLeft = Offset(box.left * slide, box.top / heightUnits * size.height),
+                                size = androidx.compose.ui.geometry.Size(box.width * slide, box.height / heightUnits * size.height),
+                            )
+                        }
+                    }
+                }
+                Text(template.label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                Text(
+                    if (layout != null) "${layout.slides} slides" else "Too many photos",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** How a photo is cut and whether it sits in a white print. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CropChoices(photo: CarouselPhoto, onChange: (CarouselPhoto) -> Unit) {
+    val crops = listOf<Pair<String, Float?>>("Whole" to null, "Square" to 1f, "4:5" to 0.8f, "3:2" to 1.5f)
+    Text("Crop", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        crops.forEach { (label, aspect) ->
+            FilterChip(
+                selected = photo.crop == aspect || (aspect != null && photo.crop != null && abs(photo.crop - aspect) < 0.01f),
+                onClick = { onChange(photo.copy(crop = aspect)) },
+                label = { Text(label) },
+            )
+        }
+        FilterChip(selected = photo.framed, onClick = { onChange(photo.copy(framed = !photo.framed)) }, label = { Text("Print border") })
     }
 }

@@ -24,6 +24,11 @@ const val LIVE_PREVIEW_SIZE = 900
 const val FULLSCREEN_SIZE = 1440
 /** A panorama is loaded this large for its editor and full-screen preview. */
 const val PANORAMA_EDITOR_SIZE = 2400
+/** Previews for carousels with many photos (up to 100) are kept smaller, to stay within memory. */
+const val SMALL_PREVIEW_SIZE = 420
+
+/** The preview size for a carousel of [count] photos. */
+fun carouselPreviewSize(count: Int) = if (count > 20) SMALL_PREVIEW_SIZE else PREVIEW_SIZE
 
 fun queryDisplayName(context: Context, uri: Uri): String? =
     try {
@@ -152,10 +157,10 @@ fun keepAccess(context: Context, uri: Uri) {
 }
 
 /** A photo for a carousel (placed later), or null if it can't be read. */
-fun loadCarouselPhoto(context: Context, uri: Uri): CarouselPhoto? =
+fun loadCarouselPhoto(context: Context, uri: Uri, previewSize: Int = PREVIEW_SIZE): CarouselPhoto? =
     try {
         keepAccess(context, uri)
-        val preview = PhotoProcessor.loadDownscaledBitmap(context, uri, PREVIEW_SIZE)
+        val preview = PhotoProcessor.loadDownscaledBitmap(context, uri, previewSize)
         CarouselPhoto(
             sourceUri = uri,
             displayName = queryDisplayName(context, uri) ?: "photo",
@@ -223,3 +228,11 @@ fun videoDurationMs(context: Context, uri: Uri): Long? {
         }
     }
 }
+
+/** At most [wanted] items from the photo picker, but no more than this phone's picker allows. */
+fun pickLimit(wanted: Int): Int =
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        min(wanted, MediaStore.getPickImagesMaxLimit())
+    } else {
+        wanted
+    }

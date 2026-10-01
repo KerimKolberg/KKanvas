@@ -36,7 +36,17 @@ data class CarouselPhoto(
     val shape: PhotoShape = PhotoShape.RECTANGLE,
     /** Colour changes for this photo only, on top of the carousel's look. */
     val adjustments: Adjustments = Adjustments(),
-)
+    /** Shown cut to this shape (width / height, centred); null = the whole photo. */
+    val crop: Float? = null,
+    /** In a white print border with a deep bottom edge, like a Polaroid. */
+    val framed: Boolean = false,
+) {
+    /** Width / height of what's shown: the photo or its crop. */
+    val shownAspect: Float get() = crop ?: aspect
+
+    /** Width / height of the whole box it takes up, border included. */
+    val boxAspect: Float get() = if (framed) printAspect(shownAspect) else shownAspect
+}
 
 /** Photos placed freely across [slides] carousel slides; later photos lie on top. */
 data class Carousel(
@@ -46,8 +56,9 @@ data class Carousel(
 ) {
     companion object {
         const val MIN_SLIDES = 2
-        const val MAX_SLIDES = 10
-        const val MAX_PHOTOS = 20
+        // Instagram allows up to 20 slides; the photo picker hands over up to 100 photos.
+        const val MAX_SLIDES = 20
+        const val MAX_PHOTOS = 100
     }
 }
 
@@ -89,7 +100,7 @@ fun placementContains(placement: Placement, aspect: Float, heightUnits: Float, p
 }
 
 /** Placements with their photos' aspect ratios: all the geometry needs to know about the photos. */
-fun Carousel.shapes(): List<Pair<Placement, Float>> = photos.map { it.placement to it.aspect }
+fun Carousel.shapes(): List<Pair<Placement, Float>> = photos.map { it.placement to it.boxAspect }
 
 /** Index of the top photo at ([px], [py]) in slide widths, or null. */
 fun carouselPhotoAt(shapes: List<Pair<Placement, Float>>, heightUnits: Float, px: Float, py: Float): Int? =
@@ -217,3 +228,22 @@ fun Carousel.withLayerPlacement(index: Int, placement: Placement): Carousel =
         val s = index - photos.size
         copy(stickers = stickers.toMutableList().also { it[s] = it[s].copy(placement = placement) })
     }
+
+/** The middle part of a [width] x [height] picture with the shape [aspect] (null: all of it), in pixels. */
+fun centerCrop(width: Int, height: Int, aspect: Float?): Box {
+    if (aspect == null) return Box(0f, 0f, width.toFloat(), height.toFloat())
+    return if (width.toFloat() / height > aspect) {
+        val w = height * aspect
+        Box((width - w) / 2, 0f, (width + w) / 2, height.toFloat())
+    } else {
+        val h = width / aspect
+        Box(0f, (height - h) / 2, width.toFloat(), (height + h) / 2)
+    }
+}
+
+/** Where the photo itself sits inside a print border of [box] (the print's full box). */
+fun printPhotoBox(box: Box, shownAspect: Float): Box {
+    val photoWidth = box.width / (1 + 2 * PRINT_SIDE)
+    val side = photoWidth * PRINT_SIDE
+    return Box(box.left + side, box.top + side, box.right - side, box.top + side + photoWidth / shownAspect)
+}

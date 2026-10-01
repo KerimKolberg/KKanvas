@@ -170,7 +170,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
         ActivityResultContracts.PickMultipleVisualMedia(CollageLayout.MAX_PHOTOS)
     ) { uris -> viewModel.startCollageFromPicker(uris) }
     val carouselPickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(Carousel.MAX_PHOTOS)
+        ActivityResultContracts.PickMultipleVisualMedia(pickLimit(Carousel.MAX_PHOTOS))
     ) { uris -> viewModel.startCarouselFromPicker(uris) }
     val panoramaPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()

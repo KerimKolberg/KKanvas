@@ -82,7 +82,7 @@ class ProjectJsonTest {
                 slides = 3,
                 photos = listOf(
                     CarouselPhoto(photo, "a", null, 1.5f, Placement(1f, 0.4f, 0.9f, 12f)),
-                    CarouselPhoto(clip, "b", null, 0.75f, Placement(2.5f, 0.5f, 0.6f), shape = PhotoShape.ARCH, adjustments = Adjustments(warmth = 0.4f)),
+                    CarouselPhoto(clip, "b", null, 0.75f, Placement(2.5f, 0.5f, 0.6f), shape = PhotoShape.ARCH, adjustments = Adjustments(warmth = 0.4f), crop = 1f, framed = true),
                 ),
                 stickers = listOf(CarouselSticker(StickerKind.TAPE, Color.CYAN, Placement(1.4f, 0.2f, 0.45f, -12f))),
             ),

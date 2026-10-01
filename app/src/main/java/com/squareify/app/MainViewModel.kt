@@ -251,16 +251,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (uris.isEmpty()) return
         isProcessing = true
         viewModelScope.launch {
-            val photos = withContext(Dispatchers.IO) { uris.take(Carousel.MAX_PHOTOS).mapNotNull { loadCarouselPhoto(context, it) } }
+            val size = carouselPreviewSize(uris.size)
+            val photos = withContext(Dispatchers.IO) { uris.take(Carousel.MAX_PHOTOS).mapNotNull { loadCarouselPhoto(context, it, size) } }
             isProcessing = false
             if (photos.size < uris.size) {
                 Toast.makeText(context, "Couldn't open ${uris.size - photos.size} of ${uris.size} photos", Toast.LENGTH_LONG).show()
             }
             if (photos.isEmpty()) return@launch
-            val slides = photos.size.coerceIn(Carousel.MIN_SLIDES, Carousel.MAX_SLIDES)
             val format = globalSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT
-            val placements = spreadPlacements(photos.map { it.aspect }, slides, slideHeightUnits(format))
-            carouselDraft = Carousel(slides, photos.zip(placements) { photo, placement -> photo.copy(placement = placement) })
+            // Many photos start in a grid, a few on a slide each; the editor offers the other templates.
+            carouselDraft = applyTemplate(defaultTemplate(photos.size), Carousel(Carousel.MIN_SLIDES, photos), slideHeightUnits(format))
         }
     }
 

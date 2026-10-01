@@ -9,6 +9,7 @@ import com.squareify.app.CarouselPhoto
 import com.squareify.app.FrameSettings
 import com.squareify.app.Placement
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -50,6 +51,43 @@ class CarouselRendererTest {
         assertEquals(Color.BLUE, slide.getPixel(200, 200 - 100))
         // Where the upright square's corner would be: the red photo below shows instead.
         assertEquals(Color.RED, slide.getPixel(200 - 75, 200 - 75))
+    }
+
+    /** 300 x 100: red, green and blue thirds. */
+    private fun bands(): Bitmap = Bitmap.createBitmap(300, 100, Bitmap.Config.ARGB_8888).apply {
+        val canvas = android.graphics.Canvas(this)
+        val paint = android.graphics.Paint()
+        listOf(Color.RED, Color.GREEN, Color.BLUE).forEachIndexed { i, color ->
+            paint.color = color
+            canvas.drawRect(i * 100f, 0f, (i + 1) * 100f, 100f, paint)
+        }
+    }
+
+    @Test
+    fun aCroppedPhotoShowsItsMiddle() {
+        // Cut to a square: only the green middle third shows, filling a square box.
+        val photo = CarouselPhoto(Uri.EMPTY, "p", null, 3f, Placement(x = 0.5f, y = 0.5f, width = 0.5f), crop = 1f)
+        val slide = CarouselRenderer.renderSlide(Carousel(2, listOf(photo)), listOf(bands()), settings, 0, 400, 400)
+        assertEquals(Color.GREEN, slide.getPixel(200, 200))
+        assertEquals(Color.GREEN, slide.getPixel(105, 105))
+        assertEquals(Color.GREEN, slide.getPixel(295, 295))
+        assertEquals(Color.WHITE, slide.getPixel(90, 200))
+    }
+
+    @Test
+    fun aPrintHasAWhiteBorderAndADeepBottom() {
+        val photo = CarouselPhoto(Uri.EMPTY, "p", null, 1f, Placement(x = 0.5f, y = 0.5f, width = 0.6f), crop = 1f, framed = true)
+        val gray = FrameSettings(bgColor = Color.DKGRAY)
+        val slide = CarouselRenderer.renderSlide(Carousel(2, listOf(photo)), listOf(solid(Color.BLUE)), gray, 0, 400, 400)
+        // Print: 240 wide; photo 240 / 1.12 = 214 wide, starting 13 px in from the print's top left.
+        val printHeight = 240 / com.squareify.app.printAspect(1f)
+        val top = 200 - printHeight / 2
+        assertEquals(Color.BLUE, slide.getPixel(200, (top + 13 + 107).toInt()))
+        val card = slide.getPixel(200, (top + 5).toInt())
+        assertTrue("card ${Integer.toHexString(card)}", Color.red(card) > 240 && Color.blue(card) > 230)
+        // The deep bottom: white well below the photo.
+        val bottom = slide.getPixel(200, (top + 13 + 214 + 25).toInt())
+        assertTrue("bottom ${Integer.toHexString(bottom)}", Color.red(bottom) > 240)
     }
 
     @Test

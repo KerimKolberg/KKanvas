@@ -62,6 +62,10 @@
 - GPU video encoding: finished frames reach the encoder through OpenGL and its hardware converts
   colours (CPU fallback kept). Encoding ~8x faster, video collages ~2x faster overall (faster
   than real time); colours verified exact on both paths.
+- Carousel templates for up to 100 photos on up to 20 slides: one per slide, clean grid (4),
+  dense grid (9), contact sheet (20 on black), gallery rows (whole photos, even rows), feature
+  + three, Polaroid wall (taped prints on paper), seamless hero; previewed with your photos.
+  Photos can be cropped (whole / square / 4:5 / 3:2) and put in a white print border.
 
 ## Next
 (Nothing planned; ideas welcome.)
