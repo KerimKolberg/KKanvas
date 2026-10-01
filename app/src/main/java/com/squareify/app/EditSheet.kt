@@ -152,6 +152,7 @@ fun EditSheet(
                 settings = settings,
                 onChange = { settings = it },
                 photoColors = item.photoColors,
+                sample = item.preview,
                 onPickFromPhoto = if (source != null) {
                     { slot ->
                         pickingSlot = slot

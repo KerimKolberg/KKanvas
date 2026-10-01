@@ -1,5 +1,7 @@
 package com.squareify.app
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,13 +11,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialog
@@ -23,6 +29,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -35,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -43,9 +51,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
+import com.squareify.app.processing.PhotoProcessor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Which background colour the eyedropper fills in: the solid/top colour or the gradient's bottom. */
 enum class ColorSlot { PRIMARY, SECONDARY }
@@ -87,7 +103,8 @@ fun FormatSelector(selected: FrameFormat, onSelect: (FrameFormat) -> Unit) {
 
 /**
  * Background, border and adjustment controls; shared by the settings panel and the edit sheet.
- * [photoColors] and [onPickFromPhoto] only exist when editing a single item.
+ * [photoColors] and [onPickFromPhoto] only exist when editing a single item. [sample] is a photo
+ * to preview the looks on.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,6 +113,7 @@ fun StyleControls(
     onChange: (FrameSettings) -> Unit,
     photoColors: List<Int> = emptyList(),
     onPickFromPhoto: ((ColorSlot) -> Unit)? = null,
+    sample: Bitmap? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(StyleTab.BACKGROUND) }
     SecondaryTabRow(
@@ -110,7 +128,7 @@ fun StyleControls(
     when (tab) {
         StyleTab.BACKGROUND -> BackgroundControls(settings, onChange, photoColors, onPickFromPhoto)
         StyleTab.BORDER -> BorderControls(settings, onChange)
-        StyleTab.ADJUST -> AdjustmentControls(settings, onChange)
+        StyleTab.ADJUST -> AdjustmentControls(settings, onChange, sample)
     }
 }
 
@@ -192,20 +210,182 @@ private fun BorderControls(settings: FrameSettings, onChange: (FrameSettings) ->
 }
 
 @Composable
-private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit) {
+private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit, sample: Bitmap?) {
     val adjustments = settings.adjustments
-    AdjustmentSlider("Brightness", adjustments.brightness, 0f, 2f) {
-        onChange(settings.copy(adjustments = adjustments.copy(brightness = it)))
+    fun change(transform: Adjustments.() -> Adjustments) = onChange(settings.copy(adjustments = adjustments.transform()))
+
+    LookPicker(current = adjustments, sample = sample, onPick = { onChange(settings.copy(adjustments = it)) })
+    Spacer(Modifier.height(8.dp))
+    AdjustmentSlider("Brightness", adjustments.brightness, 0f, 2f) { change { copy(brightness = it) } }
+    AdjustmentSlider("Contrast", adjustments.contrast, 0.5f, 1.5f) { change { copy(contrast = it) } }
+    AdjustmentSlider("Saturation", adjustments.saturation, 0f, 2f) { change { copy(saturation = it) } }
+    AdjustmentSlider("Warmth", adjustments.warmth, -1f, 1f) { change { copy(warmth = it) } }
+    AdjustmentSlider("Fade", adjustments.fade, 0f, 1f) { change { copy(fade = it) } }
+    AdjustmentSlider("Sharpness", adjustments.sharpness, 0f, 1f) { change { copy(sharpness = it) } }
+    AdjustmentSlider("Grain", adjustments.grain, 0f, 1f) { change { copy(grain = it) } }
+    AdjustmentSlider("Vignette", adjustments.vignette, 0f, 1f) { change { copy(vignette = it) } }
+}
+
+/**
+ * One tile per look (built in, then the user's own), each showing [sample] with that look, plus
+ * a tile that saves the current adjustments as a new look. Tapping a look sets all adjustments.
+ */
+@Composable
+private fun LookPicker(current: Adjustments, sample: Bitmap?, onPick: (Adjustments) -> Unit) {
+    val context = LocalContext.current
+    val looks = BUILT_IN_LOOKS + LooksStore.saved
+    var saving by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<Look?>(null) }
+
+    val thumbnails by produceState<Map<Look, ImageBitmap>>(emptyMap(), sample, looks) {
+        value = withContext(Dispatchers.Default) {
+            val base = lookThumbnailBase(sample)
+            looks.associateWith { look ->
+                PhotoProcessor.applyAdjustments(base.copy(Bitmap.Config.ARGB_8888, true), look.adjustments).asImageBitmap()
+            }
+        }
     }
-    AdjustmentSlider("Saturation", adjustments.saturation, 0f, 2f) {
-        onChange(settings.copy(adjustments = adjustments.copy(saturation = it)))
+
+    Text("Looks", style = MaterialTheme.typography.labelMedium)
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        looks.forEach { look ->
+            val isSaved = look in LooksStore.saved
+            LookTile(
+                name = look.name,
+                thumbnail = thumbnails[look],
+                selected = look.adjustments == current,
+                onClick = { onPick(look.adjustments) },
+                onDelete = if (isSaved) ({ deleting = look }) else null,
+            )
+        }
+        LookTile(name = "Save", thumbnail = null, selected = false, icon = Icons.Default.Add, onClick = { saving = true })
     }
-    AdjustmentSlider("Sharpness", adjustments.sharpness, 0f, 1f) {
-        onChange(settings.copy(adjustments = adjustments.copy(sharpness = it)))
+
+    if (saving) {
+        var name by remember { mutableStateOf("My look ${LooksStore.saved.size + 1}") }
+        AlertDialog(
+            onDismissRequest = { saving = false },
+            title = { Text("Save this look") },
+            text = {
+                Column {
+                    Text("Keeps the current adjustments so you can apply them in one tap.")
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(value = name, onValueChange = { name = it.take(24) }, singleLine = true, label = { Text("Name") })
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        LooksStore.add(context, Look(name.trim(), current))
+                        saving = false
+                    },
+                    enabled = name.isNotBlank(),
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { saving = false }) { Text("Cancel") } },
+        )
     }
-    AdjustmentSlider("Grain", adjustments.grain, 0f, 1f) {
-        onChange(settings.copy(adjustments = adjustments.copy(grain = it)))
+    deleting?.let { look ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete \"${look.name}\"?") },
+            text = { Text("Photos already saved with it don't change.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    LooksStore.remove(context, look)
+                    deleting = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
     }
+}
+
+@Composable
+private fun LookTile(
+    name: String,
+    thumbnail: ImageBitmap?,
+    selected: Boolean,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(64.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(if (selected) 3.dp else 1.dp, if (selected) SELECTED_BORDER else SWATCH_BORDER, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (thumbnail != null) {
+                Image(thumbnail, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (onDelete != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(3.dp)
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable(onClickLabel = "Delete $name", onClick = onDelete),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Delete $name", tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+        Text(
+            name,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 3.dp),
+        )
+    }
+}
+
+/**
+ * A small square to preview the looks on: the centre of [sample], or without a photo a made-up
+ * scene (sky, warm horizon, skin tone, dark ground) that shows what each look does.
+ */
+private fun lookThumbnailBase(sample: Bitmap?): Bitmap {
+    val size = 150
+    val base = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(base)
+    val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+    if (sample != null) {
+        val side = minOf(sample.width, sample.height)
+        val left = (sample.width - side) / 2
+        val top = (sample.height - side) / 2
+        canvas.drawBitmap(sample, android.graphics.Rect(left, top, left + side, top + side), android.graphics.Rect(0, 0, size, size), paint)
+    } else {
+        paint.shader = android.graphics.LinearGradient(
+            0f, 0f, 0f, size.toFloat(),
+            intArrayOf(0xFF4A90D9.toInt(), 0xFFF2A65A.toInt(), 0xFFD9A38A.toInt(), 0xFF2F4F3A.toInt()),
+            floatArrayOf(0f, 0.45f, 0.65f, 1f),
+            android.graphics.Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+    }
+    return base
 }
 
 /** Preset swatches plus a custom colour; when editing one item also colours from its photo and an eyedropper. */

@@ -18,6 +18,10 @@ object SettingsStore {
     private const val KEY_SATURATION = "saturation"
     private const val KEY_SHARPNESS = "sharpness"
     private const val KEY_GRAIN = "grain"
+    private const val KEY_CONTRAST = "contrast"
+    private const val KEY_WARMTH = "warmth"
+    private const val KEY_FADE = "fade"
+    private const val KEY_VIGNETTE = "vignette"
 
     fun load(context: Context): FrameSettings {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -42,6 +46,10 @@ object SettingsStore {
                 saturation = prefs.getFloat(KEY_SATURATION, defaults.adjustments.saturation),
                 sharpness = prefs.getFloat(KEY_SHARPNESS, defaults.adjustments.sharpness),
                 grain = prefs.getFloat(KEY_GRAIN, defaults.adjustments.grain),
+                contrast = prefs.getFloat(KEY_CONTRAST, defaults.adjustments.contrast),
+                warmth = prefs.getFloat(KEY_WARMTH, defaults.adjustments.warmth),
+                fade = prefs.getFloat(KEY_FADE, defaults.adjustments.fade),
+                vignette = prefs.getFloat(KEY_VIGNETTE, defaults.adjustments.vignette),
             ),
         )
     }
@@ -60,6 +68,10 @@ object SettingsStore {
             putFloat(KEY_SATURATION, settings.adjustments.saturation)
             putFloat(KEY_SHARPNESS, settings.adjustments.sharpness)
             putFloat(KEY_GRAIN, settings.adjustments.grain)
+            putFloat(KEY_CONTRAST, settings.adjustments.contrast)
+            putFloat(KEY_WARMTH, settings.adjustments.warmth)
+            putFloat(KEY_FADE, settings.adjustments.fade)
+            putFloat(KEY_VIGNETTE, settings.adjustments.vignette)
         }
     }
 }

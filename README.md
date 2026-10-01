@@ -3,8 +3,8 @@
 Formerly "Squareify". The launcher icon comes from `logo/kk-squareify-logo.jpg`.
 
 Android app that pads photos and videos to Instagram formats (1:1, 4:5, 3:4, 9:16)
-with a solid-colour or blurred background, plus brightness, saturation, sharpness
-and grain adjustments.
+with a solid-colour or blurred background, plus one-tap looks (and your own saved ones)
+and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignette.
 
 - Photos are saved to `Pictures/Squareify` as soon as they are added or edited.
 - Videos are rendered on demand ("Render all" queues every waiting video) by a

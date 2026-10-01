@@ -23,11 +23,20 @@ enum class FrameFormat(
     STORY("9:16", "Story", 9, 16, "story"),
 }
 
+/** Colour and texture of the result. Neutral values change nothing; looks ([Look]) are sets of these. */
 data class Adjustments(
     val brightness: Float = 1f,
     val saturation: Float = 1f,
     val sharpness: Float = 0f,
     val grain: Float = 0f,
+    /** 0.5–1.5; 1 = unchanged. */
+    val contrast: Float = 1f,
+    /** -1 (cooler, bluer) to 1 (warmer, more orange). */
+    val warmth: Float = 0f,
+    /** 0–1: lifts the blacks for a matte, washed-out look. */
+    val fade: Float = 0f,
+    /** 0–1: darkens the corners. */
+    val vignette: Float = 0f,
 ) : Serializable
 
 /** Space and decoration around the photo. Each value is 0–1; [PhotoProcessor] maps them to sizes. */

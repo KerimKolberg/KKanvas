@@ -22,16 +22,17 @@
   straight into the collage, nothing else saved); move a photo to the cell left/up/down/right
   or hold and drag it onto another cell; dragging and zooming a filled photo follow the finger
   (drawn live, full render after); Blurred fitted cells use a blur of their own photo.
+- Looks: 8 one-tap looks (Original, Warm, Cool, Vivid, Film, Faded, B&W, Noir) previewed on
+  your photo, and saving your own; new Contrast, Warmth, Fade and Vignette sliders.
 
 ## Next
-1. **Filters / presets**: one-tap looks (warm, film, B&W, faded) and saving your own.
-2. **Panorama carousel**: split one wide photo into 2-10 seamless slides.
-3. **Text**: captions/titles with a few fonts.
-4. **Frame styles**: Polaroid, film strip, thin white border.
-5. **Smart crop**: keep faces in view when cropping (collages).
-6. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
-7. Watermark (kk logo).
-8. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. **Panorama carousel**: split one wide photo into 2-10 seamless slides.
+2. **Text**: captions/titles with a few fonts.
+3. **Frame styles**: Polaroid, film strip, thin white border.
+4. **Smart crop**: keep faces in view when cropping (collages).
+5. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
+6. Watermark (kk logo).
+7. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.

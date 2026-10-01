@@ -13,6 +13,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
@@ -135,7 +136,10 @@ object PhotoProcessor {
     fun marginInset(settings: FrameSettings, width: Int, height: Int): Float =
         settings.border.margin * MAX_MARGIN * min(width, height)
 
-    /** Brightness/saturation, then sharpening and grain. May recycle [bitmap] and return a new one. */
+    /**
+     * Colour ([colorFilter]), then sharpening, grain and vignette. May recycle [bitmap] and return
+     * a new one; [bitmap] must be mutable.
+     */
     fun applyAdjustments(bitmap: Bitmap, adjustments: Adjustments): Bitmap {
         var result = applyColorAdjustments(bitmap, adjustments)
         if (adjustments.sharpness > 0f) {
@@ -143,6 +147,9 @@ object PhotoProcessor {
         }
         if (adjustments.grain > 0f) {
             result = applyGrain(result, adjustments.grain)
+        }
+        if (adjustments.vignette > 0f) {
+            applyVignette(result, adjustments.vignette)
         }
         return result
     }
@@ -262,23 +269,56 @@ object PhotoProcessor {
         return blurred
     }
 
-    /** Brightness and saturation as a colour filter; null when they're unchanged. */
+    /**
+     * Saturation, warmth, contrast, brightness and fade (in that order) as one colour filter;
+     * null when they're all unchanged.
+     */
     fun colorFilter(adjustments: Adjustments): ColorMatrixColorFilter? {
-        val brightness = adjustments.brightness
-        val saturation = adjustments.saturation
-        if (brightness == 1f && saturation == 1f) return null
-        val satMatrix = ColorMatrix()
-        satMatrix.setSaturation(saturation)
-        val brightnessMatrix = ColorMatrix(
-            floatArrayOf(
-                brightness, 0f, 0f, 0f, 0f,
-                0f, brightness, 0f, 0f, 0f,
-                0f, 0f, brightness, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f,
-            )
+        val a = adjustments
+        if (a.brightness == 1f && a.saturation == 1f && a.contrast == 1f && a.warmth == 0f && a.fade == 0f) return null
+        val matrix = ColorMatrix()
+        matrix.setSaturation(a.saturation)
+        if (a.warmth != 0f) {
+            // Warmer: more red, a touch more green, less blue; cooler the other way round.
+            matrix.postConcat(channelMatrix(1 + 0.12f * a.warmth, 1 + 0.03f * a.warmth, 1 - 0.12f * a.warmth, 0f))
+        }
+        if (a.contrast != 1f) {
+            // Stretch around mid-grey.
+            matrix.postConcat(channelMatrix(a.contrast, a.contrast, a.contrast, 128f * (1 - a.contrast)))
+        }
+        if (a.brightness != 1f) {
+            matrix.postConcat(channelMatrix(a.brightness, a.brightness, a.brightness, 0f))
+        }
+        if (a.fade > 0f) {
+            // Black rises to 46 (at full fade) while white stays nearly white: a matte finish.
+            val k = 0.2f * a.fade
+            matrix.postConcat(channelMatrix(1 - k, 1 - k, 1 - k, 230f * k))
+        }
+        return ColorMatrixColorFilter(matrix)
+    }
+
+    /** Scales red, green and blue, then adds [offset] (0–255) to each. */
+    private fun channelMatrix(red: Float, green: Float, blue: Float, offset: Float) = ColorMatrix(
+        floatArrayOf(
+            red, 0f, 0f, 0f, offset,
+            0f, green, 0f, 0f, offset,
+            0f, 0f, blue, 0f, offset,
+            0f, 0f, 0f, 1f, 0f,
         )
-        satMatrix.postConcat(brightnessMatrix)
-        return ColorMatrixColorFilter(satMatrix)
+    )
+
+    /** Darkens the corners of [bitmap] in place; the middle stays as it is. */
+    private fun applyVignette(bitmap: Bitmap, amount: Float) {
+        val w = bitmap.width.toFloat()
+        val h = bitmap.height.toFloat()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.shader = RadialGradient(
+            w / 2, h / 2, sqrt(w * w + h * h) / 2,
+            intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.argb((amount * 210).roundToInt(), 0, 0, 0)),
+            floatArrayOf(0f, 0.45f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+        Canvas(bitmap).drawRect(0f, 0f, w, h, paint)
     }
 
     private fun applyColorAdjustments(bitmap: Bitmap, adjustments: Adjustments): Bitmap {

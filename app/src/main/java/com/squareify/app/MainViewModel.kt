@@ -93,6 +93,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val photoSaveMutex = Mutex()
 
     init {
+        LooksStore.load(application)
         // Mirror progress from RenderService into the grid; drop finished entries from the holder.
         viewModelScope.launch {
             RenderStateHolder.states.collect { states ->

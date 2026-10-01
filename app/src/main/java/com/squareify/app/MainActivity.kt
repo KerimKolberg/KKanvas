@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -255,6 +256,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
                     )
                 },
                 isProcessing = viewModel.isProcessing,
+                sample = items.lastOrNull { it.collage == null && it.preview != null }?.preview,
             )
 
             // Videos only render on request.
@@ -472,6 +474,8 @@ fun GlobalSettingsPanel(
     onAddMedia: () -> Unit,
     onNewCollage: () -> Unit,
     isProcessing: Boolean,
+    /** A photo to preview the looks on. */
+    sample: Bitmap?,
 ) {
     Column(
         modifier = Modifier
@@ -512,7 +516,7 @@ fun GlobalSettingsPanel(
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                StyleControls(settings = settings, onChange = onSettingsChange)
+                StyleControls(settings = settings, onChange = onSettingsChange, sample = sample)
             }
         }
     }
