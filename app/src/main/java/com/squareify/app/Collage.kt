@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import java.io.Serializable
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** A rectangle in fractions (0–1) of an area, or in pixels; plain floats so it's unit-testable. */
 data class Box(val left: Float, val top: Float, val right: Float, val bottom: Float) {
@@ -55,6 +56,38 @@ enum class CollageLayout(val label: String, val cells: List<Box>) {
         fun forCount(count: Int): List<CollageLayout> =
             entries.filter { it.cells.size == count }.ifEmpty { entries.filter { it.cells.size >= count }.take(1) }
     }
+}
+
+enum class Direction { LEFT, UP, RIGHT, DOWN }
+
+/**
+ * The cell next to cell [index] in [direction], among the first [count] cells (those holding a
+ * photo), or null if there is none. Of several, the closest one that overlaps it the most wins,
+ * e.g. right of "Big left"'s big cell is its top-right cell.
+ */
+fun CollageLayout.neighbor(index: Int, direction: Direction, count: Int): Int? {
+    val from = cells.getOrNull(index) ?: return null
+    val eps = 1e-4f
+    return (0 until minOf(count, cells.size))
+        .filter { it != index }
+        .mapNotNull { i ->
+            val to = cells[i]
+            // Gap between the two along the direction, and how much they overlap across it.
+            val (gap, overlap) = when (direction) {
+                Direction.LEFT -> from.left - to.right to (minOf(from.bottom, to.bottom) - maxOf(from.top, to.top))
+                Direction.RIGHT -> to.left - from.right to (minOf(from.bottom, to.bottom) - maxOf(from.top, to.top))
+                Direction.UP -> from.top - to.bottom to (minOf(from.right, to.right) - maxOf(from.left, to.left))
+                Direction.DOWN -> to.top - from.bottom to (minOf(from.right, to.right) - maxOf(from.left, to.left))
+            }
+            if (gap >= -eps && overlap > eps) Triple(i, gap, overlap) else null
+        }
+        // Compared in 1/1000 steps, so float rounding can't break ties (then the earlier cell wins).
+        .minWithOrNull(
+            compareBy<Triple<Int, Float, Float>> { (it.second * 1000).roundToInt() }
+                .thenByDescending { (it.third * 1000).roundToInt() }
+                .thenBy { it.first },
+        )
+        ?.first
 }
 
 enum class CellFit { FILL, FIT }

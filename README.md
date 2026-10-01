@@ -20,8 +20,11 @@ and grain adjustments.
 - The settings for new media are remembered between launches; the grid survives rotation.
 - Long-press selects items: share them, remove them, move their originals to the phone's
   trash (restorable for 30 days under ⋮ → Recently deleted), or make a collage.
-- Collages of 2-9 photos and/or clips in 13 layouts, each cell filled (zoom, drag to pan)
-  or fitted. Photo collages are saved 2160 px wide. With clips in it a collage is a video
+- Collages of 2-9 photos and/or clips in 13 layouts, started from the selection or straight
+  from the "Collage" button (then the picked media aren't added or saved on their own). Each
+  cell is filled (zoom, drag to pan) or fitted; with the Blurred style a fitted cell is padded
+  with a blur of its own photo. Arrows or hold-and-drag swap photos between cells.
+  Photo collages are saved 2160 px wide. With clips in it a collage is a video
   (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
   clips freeze on their last frame or loop, and the sound comes from one chosen clip or none.
 

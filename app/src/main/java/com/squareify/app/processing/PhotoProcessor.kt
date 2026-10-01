@@ -137,7 +137,7 @@ object PhotoProcessor {
 
     /** Brightness/saturation, then sharpening and grain. May recycle [bitmap] and return a new one. */
     fun applyAdjustments(bitmap: Bitmap, adjustments: Adjustments): Bitmap {
-        var result = applyColorAdjustments(bitmap, adjustments.brightness, adjustments.saturation)
+        var result = applyColorAdjustments(bitmap, adjustments)
         if (adjustments.sharpness > 0f) {
             result = applySharpen(result, adjustments.sharpness)
         }
@@ -160,12 +160,31 @@ object PhotoProcessor {
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
             }
             PaddingStyle.BLUR -> {
-                // Strength 0–1 → radius 2–44 on the 300 px work image; 1/3 gives the original 16.
-                val radius = (2 + settings.blurStrength * 42).roundToInt()
-                drawBlurredBackground(canvas, source, width, height, radius)
+                val blurred = blurredCover(source, width.toFloat(), height.toFloat(), settings.blurStrength)
+                canvas.drawBitmap(
+                    blurred,
+                    Rect(0, 0, blurred.width, blurred.height),
+                    RectF(0f, 0f, width.toFloat(), height.toFloat()),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                )
+                blurred.recycle()
             }
         }
     }
+
+    /**
+     * A collage cell fitted with Blurred style: fills [rect] with a blurred copy of the cell's own
+     * [source] (with the border's corners and shadow); the whole picture then goes on top.
+     */
+    fun drawBlurredFill(canvas: Canvas, source: Bitmap, rect: RectF, settings: FrameSettings) {
+        val blurred = blurredCover(source, rect.width(), rect.height(), settings.blurStrength)
+        drawImage(canvas, blurred, fullRect(blurred), rect, settings.border)
+        blurred.recycle()
+    }
+
+    /** Corner radius in pixels of a picture drawn into [rect]. */
+    fun cornerRadius(border: Border, rect: RectF): Float =
+        border.cornerRadius * MAX_CORNER_RADIUS * min(rect.width(), rect.height())
 
     private fun fullRect(source: Bitmap) = RectF(0f, 0f, source.width.toFloat(), source.height.toFloat())
 
@@ -188,7 +207,7 @@ object PhotoProcessor {
      */
     fun drawImage(canvas: Canvas, source: Bitmap, crop: RectF, rect: RectF, border: Border) {
         val shortSide = min(rect.width(), rect.height())
-        val radius = border.cornerRadius * MAX_CORNER_RADIUS * shortSide
+        val radius = cornerRadius(border, rect)
 
         if (border.shadow > 0f) {
             // A photo-shaped rect whose blurred shadow peeks out; the photo then covers the rect itself.
@@ -213,8 +232,13 @@ object PhotoProcessor {
         canvas.drawRoundRect(rect, radius, radius, paint)
     }
 
-    private fun drawBlurredBackground(canvas: Canvas, source: Bitmap, width: Int, height: Int, radius: Int) {
-        // Blur a small centre crop with the canvas's aspect ratio (cheap), then stretch it over the canvas.
+    /**
+     * A small blurred, slightly darkened centre crop of [source] with the aspect ratio of
+     * [width] x [height] (cheap), to be stretched over that area. Strength 0–1 → radius 2–44 on
+     * the 300 px work image; 1/3 gives the original 16.
+     */
+    private fun blurredCover(source: Bitmap, width: Float, height: Float, strength: Float): Bitmap {
+        val radius = (2 + strength * 42).roundToInt()
         val workScale = min(1f, 300f / max(width, height))
         val workW = (width * workScale).roundToInt().coerceAtLeast(1)
         val workH = (height * workScale).roundToInt().coerceAtLeast(1)
@@ -230,29 +254,19 @@ object PhotoProcessor {
         val cropped = Bitmap.createBitmap(scaled, cropX, cropY, cropW, cropH)
 
         val blurred = StackBlur.blur(cropped, radius)
-
-        // Darken slightly so the photo stands out from its background.
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        paint.colorFilter = ColorMatrixColorFilter(
-            ColorMatrix().apply { setScale(0.85f, 0.85f, 0.85f, 1f) }
-        )
-        canvas.drawBitmap(
-            blurred,
-            Rect(0, 0, blurred.width, blurred.height),
-            RectF(0f, 0f, width.toFloat(), height.toFloat()),
-            paint,
-        )
+        // Darken to 85% so the photo stands out from its background.
+        Canvas(blurred).drawColor(Color.argb(38, 0, 0, 0))
 
         if (scaled !== source) scaled.recycle()
         if (cropped !== scaled) cropped.recycle()
-        blurred.recycle()
+        return blurred
     }
 
-    private fun applyColorAdjustments(bitmap: Bitmap, brightness: Float, saturation: Float): Bitmap {
-        if (brightness == 1f && saturation == 1f) return bitmap
-
-        val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
+    /** Brightness and saturation as a colour filter; null when they're unchanged. */
+    fun colorFilter(adjustments: Adjustments): ColorMatrixColorFilter? {
+        val brightness = adjustments.brightness
+        val saturation = adjustments.saturation
+        if (brightness == 1f && saturation == 1f) return null
         val satMatrix = ColorMatrix()
         satMatrix.setSaturation(saturation)
         val brightnessMatrix = ColorMatrix(
@@ -264,9 +278,16 @@ object PhotoProcessor {
             )
         )
         satMatrix.postConcat(brightnessMatrix)
+        return ColorMatrixColorFilter(satMatrix)
+    }
 
+    private fun applyColorAdjustments(bitmap: Bitmap, adjustments: Adjustments): Bitmap {
+        val filter = colorFilter(adjustments) ?: return bitmap
+
+        val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.colorFilter = ColorMatrixColorFilter(satMatrix)
+        paint.colorFilter = filter
         canvas.drawBitmap(bitmap, 0f, 0f, paint)
         bitmap.recycle()
         return result

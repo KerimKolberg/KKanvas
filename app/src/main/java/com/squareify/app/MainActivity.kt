@@ -9,7 +9,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -75,6 +74,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
@@ -122,7 +123,6 @@ fun SquarifyApp(viewModel: MainViewModel) {
     var confirmTrash by remember { mutableStateOf(false) }
     var trashIds by remember { mutableStateOf<Set<String>?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
-    var newCollage by remember { mutableStateOf<Collage?>(null) }
 
     val selectionMode = viewModel.selectedIds.isNotEmpty()
     val selectedItems = items.filter { it.id in viewModel.selectedIds }
@@ -159,6 +159,10 @@ fun SquarifyApp(viewModel: MainViewModel) {
     val pickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(20)
     ) { uris -> viewModel.addMedia(uris) }
+    // Straight into a new collage, without adding (and saving) the picked media on their own.
+    val collagePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(CollageLayout.MAX_PHOTOS)
+    ) { uris -> viewModel.startCollageFromPicker(uris) }
 
     Scaffold(
         topBar = {
@@ -224,18 +228,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
                     onShare = { shareOutputs(context, selectedSaved) },
                     onRemove = viewModel::removeSelected,
                     collageEnabled = selectedItems.size in 2..CollageLayout.MAX_PHOTOS,
-                    onCollage = {
-                        if (selectedItems.any { it.collage != null }) {
-                            Toast.makeText(context, "A collage can't contain another collage.", Toast.LENGTH_LONG).show()
-                        } else {
-                            newCollage = Collage(
-                                layout = CollageLayout.forCount(selectedItems.size).first(),
-                                cells = selectedItems.map {
-                                    CollageCell(it.sourceUri, it.displayName, it.preview, isVideo = it.isVideo)
-                                },
-                            )
-                        }
-                    },
+                    onCollage = viewModel::startCollageFromSelection,
                 )
             }
         },
@@ -256,7 +249,11 @@ fun SquarifyApp(viewModel: MainViewModel) {
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                     )
                 },
-                mediaCount = items.size,
+                onNewCollage = {
+                    collagePickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                    )
+                },
                 isProcessing = viewModel.isProcessing,
             )
 
@@ -278,7 +275,8 @@ fun SquarifyApp(viewModel: MainViewModel) {
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Tap \"Add Photos/Videos\" to get started",
+                        "Tap \"Add Photos/Videos\" to get started,\nor \"Collage\" to combine a few into one",
+                        textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -374,12 +372,12 @@ fun SquarifyApp(viewModel: MainViewModel) {
             )
         }
     }
-    newCollage?.let { collage ->
+    viewModel.collageDraft?.let { collage ->
         CollageEditor(
             initialCollage = collage,
             initialSettings = viewModel.globalSettings,
             isNew = true,
-            onDismiss = { newCollage = null },
+            onDismiss = viewModel::dismissCollageDraft,
             onApply = { c, s -> viewModel.createCollage(c, s) },
         )
     }
@@ -472,7 +470,7 @@ fun GlobalSettingsPanel(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onAddMedia: () -> Unit,
-    mediaCount: Int,
+    onNewCollage: () -> Unit,
     isProcessing: Boolean,
 ) {
     Column(
@@ -484,16 +482,18 @@ fun GlobalSettingsPanel(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(onClick = onAddMedia, modifier = Modifier.weight(1f)) {
+            val buttonPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+            Button(onClick = onAddMedia, modifier = Modifier.weight(1f), contentPadding = buttonPadding) {
                 Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text(if (isProcessing) "Processing…" else "Add Photos/Videos")
+                Text(if (isProcessing) "Processing…" else "Add Photos/Videos", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(8.dp))
-            Text(
-                "$mediaCount item${if (mediaCount == 1) "" else "s"}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            FilledTonalButton(onClick = onNewCollage, enabled = !isProcessing, contentPadding = buttonPadding) {
+                Icon(Icons.Default.Dashboard, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Collage", maxLines = 1)
+            }
             IconButton(onClick = { onExpandedChange(!expanded) }) {
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,

@@ -18,6 +18,10 @@
 - Video rendering ~3x faster (encoder no longer waits per frame, faster RGB→YUV), and video
   colours fixed: shadows were crushed and highlights clipped (full-range values read as
   video range). On-device tests for sound, colours and collage timing.
+- Collage editor round 2 (user feedback): "Collage" button next to Add (picked media go
+  straight into the collage, nothing else saved); move a photo to the cell left/up/down/right
+  or hold and drag it onto another cell; dragging and zooming a filled photo follow the finger
+  (drawn live, full render after); Blurred fitted cells use a blur of their own photo.
 
 ## Next
 1. **Filters / presets**: one-tap looks (warm, film, B&W, faded) and saving your own.

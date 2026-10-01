@@ -8,10 +8,15 @@ import com.squareify.app.CellFit
 import com.squareify.app.Collage
 import com.squareify.app.CollageCell
 import com.squareify.app.FrameSettings
+import com.squareify.app.PaddingStyle
 import com.squareify.app.collageCellBoxes
 import kotlin.math.min
 
-/** Draws a collage: background, then each photo in its cell (filled or fitted), then adjustments. */
+/**
+ * Draws a collage: background, then each photo in its cell (filled or fitted), then adjustments.
+ * With the Blurred style, a fitted cell is padded with a blur of its own photo; the gaps and
+ * margin around the cells show a blur of the first photo.
+ */
 object CollageRenderer {
 
     /** Cell rectangles on a [width] x [height] canvas. */
@@ -39,9 +44,16 @@ object CollageRenderer {
         cellRects(collage, settings, width, height).forEachIndexed { i, rect ->
             val cell = collage.cells.getOrNull(i) ?: return@forEachIndexed
             val source = sources.getOrNull(i) ?: return@forEachIndexed
-            when (cell.fit) {
-                CellFit.FILL -> PhotoProcessor.drawImage(canvas, source, cropFor(source, rect, cell), rect, settings.border)
-                CellFit.FIT -> PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border)
+            when {
+                cell.fit == CellFit.FILL ->
+                    PhotoProcessor.drawImage(canvas, source, cropFor(source, rect, cell), rect, settings.border)
+                settings.paddingStyle == PaddingStyle.BLUR -> {
+                    // The cell keeps its shape (corners, shadow); the photo inside only gets the corners.
+                    PhotoProcessor.drawBlurredFill(canvas, source, rect, settings)
+                    PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border.copy(shadow = 0f))
+                }
+                else ->
+                    PhotoProcessor.drawImage(canvas, source, fullRect(source), fitInto(source, rect), settings.border)
             }
         }
         return PhotoProcessor.applyAdjustments(output, settings.adjustments)

@@ -48,6 +48,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var selectedIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
+    /** A new collage open in the editor, not yet created. */
+    var collageDraft by mutableStateOf<Collage?>(null)
+        private set
+
     /** Saved items (all, or only those in [ids]) whose original can still be moved to the trash. */
     fun trashableItems(ids: Set<String>? = null): List<MediaItem> =
         items.filter {
@@ -173,6 +177,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Opens the collage editor with the selected items. */
+    fun startCollageFromSelection() {
+        val selected = items.filter { it.id in selectedIds }
+        if (selected.any { it.collage != null }) {
+            Toast.makeText(context, "A collage can't contain another collage.", Toast.LENGTH_LONG).show()
+            return
+        }
+        collageDraft = newCollage(selected.map { CollageCell(it.sourceUri, it.displayName, it.preview, isVideo = it.isVideo) })
+    }
+
+    /**
+     * Opens the collage editor with media picked just for it. They aren't added to the grid or
+     * saved on their own; only the collage is.
+     */
+    fun startCollageFromPicker(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        if (uris.size < 2) {
+            Toast.makeText(context, "Pick at least 2 photos or videos for a collage", Toast.LENGTH_LONG).show()
+            return
+        }
+        isProcessing = true
+        viewModelScope.launch {
+            val cells = withContext(Dispatchers.IO) { uris.mapNotNull { loadCell(it) } }
+            isProcessing = false
+            if (cells.size < uris.size) {
+                Toast.makeText(context, "Couldn't open ${uris.size - cells.size} of ${uris.size} files", Toast.LENGTH_LONG).show()
+            }
+            if (cells.size >= 2) collageDraft = newCollage(cells)
+        }
+    }
+
+    fun dismissCollageDraft() {
+        collageDraft = null
+    }
+
+    private fun newCollage(cells: List<CollageCell>) =
+        Collage(layout = CollageLayout.forCount(cells.size).first(), cells = cells)
+
+    private fun loadCell(uri: Uri): CollageCell? =
+        try {
+            val type = context.contentResolver.getType(uri)
+            val isVideo = type != null && type.startsWith("video/")
+            val name = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "media"
+            CollageCell(uri, name, loadSourceImage(context, uri, isVideo, PREVIEW_SIZE), isVideo = isVideo)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not open $uri", e)
+            null
+        }
+
     /** Adds a new collage at the top of the grid and saves it (a video collage starts rendering). */
     fun createCollage(collage: Collage, settings: FrameSettings) {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -185,6 +238,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         items = listOf(item) + items
         clearSelection()
+        collageDraft = null
         refreshCollage(item.id, collage, settings)
     }
 

@@ -11,7 +11,9 @@ import com.squareify.app.Collage
 import com.squareify.app.CollageCell
 import com.squareify.app.CollageLayout
 import com.squareify.app.FrameSettings
+import com.squareify.app.PaddingStyle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -45,6 +47,18 @@ class CollageRendererTest {
         assertEquals(Color.RED, out.getPixel(250, 500))
         assertEquals(Color.WHITE, out.getPixel(250, 100))
         assertEquals(Color.WHITE, out.getPixel(250, 900))
+    }
+
+    @Test
+    fun blurredFitCellIsPaddedWithItsOwnPhoto() {
+        val blurred = FrameSettings(paddingStyle = PaddingStyle.BLUR)
+        val collage = Collage(CollageLayout.SIDE_BY_SIDE, listOf(cell(), cell(fit = CellFit.FIT)), spacing = 0f)
+        // The blue 4:1 photo becomes a 500 x 125 strip across the middle of the right cell.
+        val out = CollageRenderer.render(collage, listOf(solid(Color.RED, 300, 400), solid(Color.BLUE, 400, 100)), blurred, 1000, 1000)
+        assertEquals(Color.BLUE, out.getPixel(750, 500))
+        // Above it: a darkened blur of the blue photo, not of the first (red) one.
+        val padding = out.getPixel(750, 100)
+        assertTrue("padding is ${Integer.toHexString(padding)}", Color.blue(padding) > 150 && Color.red(padding) < 60)
     }
 
     @Test

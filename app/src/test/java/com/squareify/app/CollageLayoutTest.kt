@@ -44,6 +44,40 @@ class CollageLayoutTest {
     }
 
     @Test
+    fun neighborsInAGrid() {
+        // 2 x 2: 0 1 / 2 3
+        val grid = CollageLayout.GRID_2X2
+        assertEquals(1, grid.neighbor(0, Direction.RIGHT, 4))
+        assertEquals(2, grid.neighbor(0, Direction.DOWN, 4))
+        assertEquals(0, grid.neighbor(2, Direction.UP, 4))
+        assertEquals(2, grid.neighbor(3, Direction.LEFT, 4))
+        assertEquals(null, grid.neighbor(0, Direction.LEFT, 4))
+        assertEquals(null, grid.neighbor(0, Direction.UP, 4))
+    }
+
+    @Test
+    fun neighborsInUnevenLayouts() {
+        // Big left: 0 is the left half, 1 top right, 2 bottom right.
+        val bigLeft = CollageLayout.BIG_LEFT
+        assertEquals(1, bigLeft.neighbor(0, Direction.RIGHT, 3))
+        assertEquals(0, bigLeft.neighbor(2, Direction.LEFT, 3))
+        assertEquals(2, bigLeft.neighbor(1, Direction.DOWN, 3))
+        // 2 + 3: 0 1 on top, 2 3 4 below; the middle bottom cell overlaps both top cells equally.
+        val twoThree = CollageLayout.TWO_THREE
+        assertEquals(2, twoThree.neighbor(0, Direction.DOWN, 5))
+        assertEquals(0, twoThree.neighbor(3, Direction.UP, 5))
+        assertEquals(1, twoThree.neighbor(4, Direction.UP, 5))
+    }
+
+    @Test
+    fun emptyCellsAreNotNeighbors() {
+        // 7 photos in 3 x 3: cells 7 and 8 are empty.
+        assertEquals(null, CollageLayout.GRID_3X3.neighbor(6, Direction.RIGHT, 7))
+        assertEquals(null, CollageLayout.GRID_3X3.neighbor(4, Direction.DOWN, 7))
+        assertEquals(6, CollageLayout.GRID_3X3.neighbor(3, Direction.DOWN, 7))
+    }
+
+    @Test
     fun layoutsOfferedPerPhotoCount() {
         assertEquals(listOf(CollageLayout.SIDE_BY_SIDE, CollageLayout.STACKED), CollageLayout.forCount(2))
         assertEquals(listOf(CollageLayout.TWO_THREE), CollageLayout.forCount(5))
