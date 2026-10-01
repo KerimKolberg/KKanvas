@@ -95,7 +95,7 @@ fun EditSheet(
                     .fillMaxWidth()
                     .height(280.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF1F5F9))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .pointerInput(picking, source) {
                         if (picking && source != null) {
                             detectTapGestures { offset ->
@@ -134,7 +134,7 @@ fun EditSheet(
                     else -> ""
                 },
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(top = 4.dp),

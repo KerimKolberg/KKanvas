@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark window while the app starts, so dark mode doesn't flash white. -->
+    <style name="Theme.Squareify" parent="android:Theme.Material.NoActionBar" />
+</resources>

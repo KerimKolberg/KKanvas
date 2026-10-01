@@ -143,6 +143,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         items = items.filter { it.id != id }
     }
 
+    /** Clears finished items from the list; the files themselves stay in the gallery. */
+    fun removeSaved() {
+        items = items.filterNot { it.isRendered && !it.isProcessing }
+    }
+
+    fun removeAll() {
+        items = emptyList()
+    }
+
     /** Renders the photo in its format and saves it to Pictures/Squareify. */
     private suspend fun autoSavePhoto(id: String) {
         updateItem(id) { it.copy(isProcessing = true, error = null) }

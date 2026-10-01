@@ -55,7 +55,7 @@ fun MediaCard(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFF1F5F9))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClickLabel = "Open preview", onClick = onOpen)
     ) {
         item.thumbnail?.let {

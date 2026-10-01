@@ -10,6 +10,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -34,9 +35,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -44,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,7 +60,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -65,13 +70,14 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // Only on a fresh start: after a rotation the shared items are already in the ViewModel.
         if (savedInstanceState == null) {
             viewModel.addMedia(intent.sharedMediaUris())
         }
         setContent {
-            MaterialTheme {
+            SquareifyTheme {
                 SquarifyApp(viewModel)
             }
         }
@@ -95,6 +101,10 @@ fun SquarifyApp(viewModel: MainViewModel) {
     // Saveable so an open sheet or preview survives rotation along with the ViewModel.
     var editingItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var previewItemId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Settings start open; they fold away once media is being added.
+    var settingsExpanded by rememberSaveable { mutableStateOf(true) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmRemoveAll by remember { mutableStateOf(false) }
 
     // Needed for the render progress notification on Android 13+. Rendering works without it.
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -107,6 +117,11 @@ fun SquarifyApp(viewModel: MainViewModel) {
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    // Covers both the picker and media shared in from other apps.
+    LaunchedEffect(viewModel.isProcessing) {
+        if (viewModel.isProcessing) settingsExpanded = false
     }
 
     val pickerLauncher = rememberLauncherForActivityResult(
@@ -125,6 +140,30 @@ fun SquarifyApp(viewModel: MainViewModel) {
                             Icon(Icons.Default.Share, contentDescription = "Share all saved")
                         }
                     }
+                    if (items.isNotEmpty()) {
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More")
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove saved items") },
+                                    enabled = items.any { it.isRendered && !it.isProcessing },
+                                    onClick = {
+                                        menuOpen = false
+                                        viewModel.removeSaved()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Remove all") },
+                                    onClick = {
+                                        menuOpen = false
+                                        confirmRemoveAll = true
+                                    },
+                                )
+                            }
+                        }
+                    }
                 },
             )
         }
@@ -137,7 +176,10 @@ fun SquarifyApp(viewModel: MainViewModel) {
             GlobalSettingsPanel(
                 settings = viewModel.globalSettings,
                 onSettingsChange = viewModel::updateGlobalSettings,
+                expanded = settingsExpanded,
+                onExpandedChange = { settingsExpanded = it },
                 onAddMedia = {
+                    settingsExpanded = false
                     pickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                     )
@@ -146,9 +188,9 @@ fun SquarifyApp(viewModel: MainViewModel) {
                 isProcessing = viewModel.isProcessing,
             )
 
-            // Videos only render on request; with several waiting, offer to queue them all.
+            // Videos only render on request.
             val pendingVideos = items.count { it.isVideo && !it.isRendered && !it.isProcessing }
-            if (pendingVideos >= 2) {
+            if (pendingVideos > 0) {
                 FilledTonalButton(
                     onClick = viewModel::renderAllVideos,
                     modifier = Modifier
@@ -157,13 +199,16 @@ fun SquarifyApp(viewModel: MainViewModel) {
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Render all $pendingVideos videos")
+                    Text(if (pendingVideos == 1) "Render video" else "Render all $pendingVideos videos")
                 }
             }
 
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Tap \"Add Photos/Videos\" to get started", color = Color.Gray)
+                    Text(
+                        "Tap \"Add Photos/Videos\" to get started",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             } else {
                 LazyVerticalGrid(
@@ -189,6 +234,21 @@ fun SquarifyApp(viewModel: MainViewModel) {
         }
     }
 
+    if (confirmRemoveAll) {
+        AlertDialog(
+            onDismissRequest = { confirmRemoveAll = false },
+            title = { Text("Remove all ${items.size} items?") },
+            text = { Text("This only clears the list. Your photos and videos, and the saved results, stay in the gallery.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRemoveAll = false
+                    viewModel.removeAll()
+                }) { Text("Remove all") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemoveAll = false }) { Text("Cancel") } },
+        )
+    }
+
     items.firstOrNull { it.id == editingItemId }?.let { item ->
         EditSheet(
             item = item,
@@ -205,12 +265,12 @@ fun SquarifyApp(viewModel: MainViewModel) {
 fun GlobalSettingsPanel(
     settings: FrameSettings,
     onSettingsChange: (FrameSettings) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onAddMedia: () -> Unit,
     mediaCount: Int,
     isProcessing: Boolean,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -226,11 +286,14 @@ fun GlobalSettingsPanel(
                 Text(if (isProcessing) "Processing…" else "Add Photos/Videos")
             }
             Spacer(Modifier.width(8.dp))
-            Text("$mediaCount item${if (mediaCount == 1) "" else "s"}", color = Color.Gray)
-            IconButton(onClick = { expanded = !expanded }) {
+            Text(
+                "$mediaCount item${if (mediaCount == 1) "" else "s"}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            IconButton(onClick = { onExpandedChange(!expanded) }) {
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = "Settings",
+                    contentDescription = if (expanded) "Hide settings" else "Show settings",
                 )
             }
         }
@@ -242,7 +305,7 @@ fun GlobalSettingsPanel(
             // Capped and scrollable so the grid below stays visible.
             Column(
                 modifier = Modifier
-                    .heightIn(max = 360.dp)
+                    .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 StyleControls(settings = settings, onChange = onSettingsChange)

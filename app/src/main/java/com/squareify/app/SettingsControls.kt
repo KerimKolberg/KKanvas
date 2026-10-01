@@ -23,10 +23,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,7 +97,37 @@ fun StyleControls(
     photoColors: List<Int> = emptyList(),
     onPickFromPhoto: ((ColorSlot) -> Unit)? = null,
 ) {
-    SectionLabel("Background")
+    var tab by rememberSaveable { mutableStateOf(StyleTab.BACKGROUND) }
+    SecondaryTabRow(
+        selectedTabIndex = tab.ordinal,
+        containerColor = Color.Transparent,
+        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+    ) {
+        StyleTab.entries.forEach { t ->
+            Tab(selected = tab == t, onClick = { tab = t }, text = { Text(t.title) })
+        }
+    }
+    when (tab) {
+        StyleTab.BACKGROUND -> BackgroundControls(settings, onChange, photoColors, onPickFromPhoto)
+        StyleTab.BORDER -> BorderControls(settings, onChange)
+        StyleTab.ADJUST -> AdjustmentControls(settings, onChange)
+    }
+}
+
+private enum class StyleTab(val title: String) {
+    BACKGROUND("Background"),
+    BORDER("Border"),
+    ADJUST("Adjust"),
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BackgroundControls(
+    settings: FrameSettings,
+    onChange: (FrameSettings) -> Unit,
+    photoColors: List<Int>,
+    onPickFromPhoto: ((ColorSlot) -> Unit)?,
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PaddingStyle.entries.forEach { style ->
             FilterChip(
@@ -135,13 +168,18 @@ fun StyleControls(
                 onPickFromPhoto = onPickFromPhoto?.let { pick -> { pick(ColorSlot.SECONDARY) } },
             )
         }
-        PaddingStyle.BLUR -> AdjustmentSlider("Blur", settings.blurStrength, 0f, 1f) {
-            onChange(settings.copy(blurStrength = it))
+        PaddingStyle.BLUR -> {
+            Spacer(Modifier.height(8.dp))
+            AdjustmentSlider("Blur", settings.blurStrength, 0f, 1f) {
+                onChange(settings.copy(blurStrength = it))
+            }
         }
     }
+}
 
+@Composable
+private fun BorderControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit) {
     val border = settings.border
-    SectionLabel("Border")
     AdjustmentSlider("Margin", border.margin, 0f, 1f) {
         onChange(settings.copy(border = border.copy(margin = it)))
     }
@@ -151,9 +189,11 @@ fun StyleControls(
     AdjustmentSlider("Shadow", border.shadow, 0f, 1f) {
         onChange(settings.copy(border = border.copy(shadow = it)))
     }
+}
 
+@Composable
+private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit) {
     val adjustments = settings.adjustments
-    SectionLabel("Adjustments")
     AdjustmentSlider("Brightness", adjustments.brightness, 0f, 2f) {
         onChange(settings.copy(adjustments = adjustments.copy(brightness = it)))
     }
@@ -166,11 +206,6 @@ fun StyleControls(
     AdjustmentSlider("Grain", adjustments.grain, 0f, 1f) {
         onChange(settings.copy(adjustments = adjustments.copy(grain = it)))
     }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
 }
 
 /** Preset swatches plus a custom colour; when editing one item also colours from its photo and an eyedropper. */
@@ -206,7 +241,11 @@ fun ColorChoices(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("From photo", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+            Text(
+                "From photo",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             photoColors.forEach { c -> ColorSwatch(c, isSelected = c == selected, onClick = { onSelect(c) }) }
             if (onPickFromPhoto != null) {
                 ColorSwatch(
@@ -311,7 +350,7 @@ fun ColorPickerDialog(initial: Int, onDismiss: () -> Unit, onPick: (Int) -> Unit
                 Text(
                     "#%06X".format(color and 0xFFFFFF),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
