@@ -30,11 +30,13 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -129,20 +131,34 @@ fun StyleControls(
     var tab by rememberSaveable { mutableStateOf(StyleTab.BACKGROUND) }
     val tabs = StyleTab.entries.filter { (showBorder || it != StyleTab.BORDER) && (showText || it != StyleTab.TEXT) }
     val shown = if (tab in tabs) tab else tabs.first()
-    SecondaryTabRow(
-        selectedTabIndex = tabs.indexOf(shown),
-        containerColor = Color.Transparent,
-        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
-    ) {
+    val tabRow: @Composable () -> Unit = {
         tabs.forEach { t ->
             Tab(selected = shown == t, onClick = { tab = t }, text = { Text(t.title) })
         }
+    }
+    // Five tabs don't fit across a phone; then they scroll.
+    if (tabs.size > 4) {
+        SecondaryScrollableTabRow(
+            selectedTabIndex = tabs.indexOf(shown),
+            containerColor = Color.Transparent,
+            edgePadding = 0.dp,
+            modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+            tabs = tabRow,
+        )
+    } else {
+        SecondaryTabRow(
+            selectedTabIndex = tabs.indexOf(shown),
+            containerColor = Color.Transparent,
+            modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+            tabs = tabRow,
+        )
     }
     when (shown) {
         StyleTab.BACKGROUND -> BackgroundControls(settings, onChange, photoColors, onPickFromPhoto)
         StyleTab.BORDER -> BorderControls(settings, onChange, showFrameStyles)
         StyleTab.ADJUST -> AdjustmentControls(settings, onChange, sample)
         StyleTab.TEXT -> TextControls(settings, onChange, photoColors)
+        StyleTab.LOGO -> WatermarkControls(settings, onChange)
     }
 }
 
@@ -151,6 +167,7 @@ private enum class StyleTab(val title: String) {
     BORDER("Border"),
     ADJUST("Adjust"),
     TEXT("Text"),
+    LOGO("Logo"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -499,6 +516,54 @@ private fun TextControls(settings: FrameSettings, onChange: (FrameSettings) -> U
     if (settings.text != null) {
         TextButton(onClick = { onChange(settings.copy(text = null)) }) { Text("Remove text") }
     }
+}
+
+/** The kk logo watermark: on/off, which artwork, corner, colour, size and opacity. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WatermarkControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit) {
+    val watermark = settings.watermark
+    fun change(transform: Watermark.() -> Watermark) = onChange(settings.copy(watermark = watermark.transform()))
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Add the kk logo")
+            Text(
+                "In a corner of everything you save",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = watermark.enabled, onCheckedChange = { on -> change { copy(enabled = on) } })
+    }
+    if (!watermark.enabled) return
+
+    @Composable
+    fun <T> ChipRow(title: String, options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+        Text(title, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 10.dp))
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            options.forEach { option ->
+                FilterChip(selected = option == selected, onClick = { onSelect(option) }, label = { Text(label(option)) })
+            }
+        }
+    }
+
+    ChipRow("Mark", WatermarkMark.entries, watermark.mark, { it.label }) { change { copy(mark = it) } }
+    ChipRow("Corner", WatermarkCorner.entries, watermark.corner, { it.label }) { change { copy(corner = it) } }
+    ChipRow(
+        "Color",
+        Watermark.COLORS.map { it.second },
+        watermark.color,
+        { color -> Watermark.COLORS.firstOrNull { it.second == color }?.first ?: "Custom" },
+    ) { change { copy(color = it) } }
+    Spacer(Modifier.height(8.dp))
+    AdjustmentSlider("Size", watermark.size, 0f, 1f) { change { copy(size = it) } }
+    AdjustmentSlider("Opacity", watermark.opacity, 0.1f, 1f) { change { copy(opacity = it) } }
 }
 
 private fun heightLabel(position: Float) = when {

@@ -72,6 +72,8 @@ data class FrameSettings(
     val text: TextOverlay? = null,
     /** Trim, speed, sound and boomerang for a video; also never part of the settings for new media. */
     val video: VideoEdit = VideoEdit(),
+    /** The kk logo in a corner; part of the settings for new media. */
+    val watermark: Watermark = Watermark(),
 ) : Serializable {
     companion object {
         const val DEFAULT_BLUR_STRENGTH = 1f / 3

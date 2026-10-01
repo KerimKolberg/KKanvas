@@ -15,6 +15,12 @@ object SettingsStore {
     private const val KEY_CORNER_RADIUS = "cornerRadius"
     private const val KEY_SHADOW = "shadow"
     private const val KEY_FRAME_STYLE = "frameStyle"
+    private const val KEY_WATERMARK = "watermark"
+    private const val KEY_WATERMARK_MARK = "watermarkMark"
+    private const val KEY_WATERMARK_CORNER = "watermarkCorner"
+    private const val KEY_WATERMARK_SIZE = "watermarkSize"
+    private const val KEY_WATERMARK_OPACITY = "watermarkOpacity"
+    private const val KEY_WATERMARK_COLOR = "watermarkColor"
     private const val KEY_BRIGHTNESS = "brightness"
     private const val KEY_SATURATION = "saturation"
     private const val KEY_SHARPNESS = "sharpness"
@@ -55,6 +61,18 @@ object SettingsStore {
                 fade = prefs.getFloat(KEY_FADE, defaults.adjustments.fade),
                 vignette = prefs.getFloat(KEY_VIGNETTE, defaults.adjustments.vignette),
             ),
+            watermark = Watermark(
+                enabled = prefs.getBoolean(KEY_WATERMARK, defaults.watermark.enabled),
+                mark = prefs.getString(KEY_WATERMARK_MARK, null)
+                    ?.let { name -> WatermarkMark.entries.firstOrNull { it.name == name } }
+                    ?: defaults.watermark.mark,
+                corner = prefs.getString(KEY_WATERMARK_CORNER, null)
+                    ?.let { name -> WatermarkCorner.entries.firstOrNull { it.name == name } }
+                    ?: defaults.watermark.corner,
+                size = prefs.getFloat(KEY_WATERMARK_SIZE, defaults.watermark.size),
+                opacity = prefs.getFloat(KEY_WATERMARK_OPACITY, defaults.watermark.opacity),
+                color = prefs.getInt(KEY_WATERMARK_COLOR, defaults.watermark.color),
+            ),
         )
     }
 
@@ -77,6 +95,12 @@ object SettingsStore {
             putFloat(KEY_WARMTH, settings.adjustments.warmth)
             putFloat(KEY_FADE, settings.adjustments.fade)
             putFloat(KEY_VIGNETTE, settings.adjustments.vignette)
+            putBoolean(KEY_WATERMARK, settings.watermark.enabled)
+            putString(KEY_WATERMARK_MARK, settings.watermark.mark.name)
+            putString(KEY_WATERMARK_CORNER, settings.watermark.corner.name)
+            putFloat(KEY_WATERMARK_SIZE, settings.watermark.size)
+            putFloat(KEY_WATERMARK_OPACITY, settings.watermark.opacity)
+            putInt(KEY_WATERMARK_COLOR, settings.watermark.color)
         }
     }
 }

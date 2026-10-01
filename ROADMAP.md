@@ -37,10 +37,12 @@
 - Video tools (single videos, in the edit sheet): trim, speed 0.25x-4x (frames dropped when
   sped up to keep the frame rate), sound on/off, boomerang (cached JPEG frames, max 10 s).
   Trimmed sound is cut to match; sound is left out at other speeds and in boomerangs.
+- Watermark: the kk logo (KK letters or the full logo, cut from the logo by
+  tools/make-watermark.ps1) in a chosen corner, white / black / teal, size and opacity; on
+  everything saved once switched on (Logo tab).
 
 ## Next
-1. Watermark (kk logo).
-2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.

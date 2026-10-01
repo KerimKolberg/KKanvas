@@ -50,6 +50,12 @@ class RenderService : Service() {
      */
     private val savedUris = ConcurrentHashMap<String, Uri>()
 
+    override fun onCreate() {
+        super.onCreate()
+        // Rendering can start without the app's screen (restarted by Android), so load it here too.
+        WatermarkImages.load(this)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

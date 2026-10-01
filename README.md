@@ -30,6 +30,8 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   Photo collages are saved 2160 px wide.
 - Text tab in each item's editor: a caption or title in one of 6 fonts, with size, colour,
   shadow or box behind it, alignment and height. Looks don't affect it.
+- Logo tab: the kk logo as a watermark in a corner of everything saved (KK letters or the
+  full logo; white, black or teal; size and opacity).
 - Panorama carousel: one wide photo (picked with "Collage", or "Split into carousel slides" in
   its edit sheet) becomes 2-10 slides that join up seamlessly when swiped; shared in order. With clips in it a collage is a video
   (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
@@ -59,6 +61,8 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `processing/CollageRenderer.kt` | Draws a collage from its cells' pictures |
 | `processing/PanoramaRenderer.kt` | Draws a panorama strip, or one slide of it |
 | `TextOverlay.kt`, `processing/TextRenderer.kt` | Captions: settings and drawing |
+| `Watermark.kt`, `processing/WatermarkRenderer.kt` | The kk logo watermark; artwork in `res/drawable-nodpi` |
+| `VideoEdit.kt`, `VideoControls.kt` | Trim, speed, sound and boomerang for a video |
 | `processing/VideoProcessor.kt` | Single video: decode, pad each frame, encode, copy the sound |
 | `processing/VideoCollageProcessor.kt` | Video collage: one decoder per clip on a shared timeline |
 | `processing/GlFrameReader.kt` | Reads decoded frames back through OpenGL |

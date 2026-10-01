@@ -248,9 +248,12 @@ object PhotoProcessor {
         }
     }
 
-    /** Draws the caption, if any, over the whole of [bitmap]. */
+    /** Draws the caption and the watermark, if any, over the whole of [bitmap]. */
     fun drawText(bitmap: Bitmap, settings: FrameSettings) {
-        TextRenderer.draw(Canvas(bitmap), settings.text, RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()))
+        val area = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+        val canvas = Canvas(bitmap)
+        TextRenderer.draw(canvas, settings.text, area)
+        WatermarkRenderer.draw(canvas, settings.watermark, area)
     }
 
     /** The margin on each side in pixels, for a [width] x [height] canvas. */

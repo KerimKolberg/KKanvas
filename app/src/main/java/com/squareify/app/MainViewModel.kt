@@ -95,6 +95,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         LooksStore.load(application)
+        WatermarkImages.load(application)
         // Mirror progress from RenderService into the grid; drop finished entries from the holder.
         viewModelScope.launch {
             RenderStateHolder.states.collect { states ->

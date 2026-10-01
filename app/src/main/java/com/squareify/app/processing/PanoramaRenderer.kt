@@ -45,12 +45,11 @@ object PanoramaRenderer {
             val area = RectF(-index * slideWidth.toFloat(), 0f, stripWidth - index * slideWidth, slideHeight.toFloat())
             PhotoProcessor.drawVignette(Canvas(result), area, vignette)
         }
-        // Text sits on the panorama as a whole too: it may run across slides.
-        TextRenderer.draw(
-            Canvas(result).apply { translate(-index * slideWidth.toFloat(), 0f) },
-            settings.text,
-            RectF(0f, 0f, stripWidth, slideHeight.toFloat()),
-        )
+        // Text and watermark sit on the panorama as a whole too: text may run across slides.
+        val stripCanvas = Canvas(result).apply { translate(-index * slideWidth.toFloat(), 0f) }
+        val strip = RectF(0f, 0f, stripWidth, slideHeight.toFloat())
+        TextRenderer.draw(stripCanvas, settings.text, strip)
+        WatermarkRenderer.draw(stripCanvas, settings.watermark, strip)
         return result
     }
 
