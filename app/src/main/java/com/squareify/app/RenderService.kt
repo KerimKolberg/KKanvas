@@ -1,0 +1,207 @@
+package com.squareify.app
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.IBinder
+import android.os.Parcelable
+import android.os.PowerManager
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.squareify.app.processing.VideoProcessor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
+
+/**
+ * Foreground service that renders queued videos one at a time, so a render keeps
+ * running when the app goes to the background. Progress goes to [RenderStateHolder].
+ */
+class RenderService : Service() {
+
+    private data class RenderRequest(
+        val id: String,
+        val sourceUri: Uri,
+        val settings: FrameSettings,
+        val displayName: String,
+    )
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var wakeLock: PowerManager.WakeLock? = null
+    private val queue = ConcurrentLinkedQueue<RenderRequest>()
+    private var processingJob: Job? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val request = intent?.toRenderRequest()
+        if (request != null) {
+            queue.add(request)
+            RenderStateHolder.markQueued(request.id)
+        }
+        ensureProcessing()
+        return START_REDELIVER_INTENT
+    }
+
+    private fun Intent.toRenderRequest(): RenderRequest? {
+        val id = getStringExtra(EXTRA_ID) ?: return null
+        val sourceUri = getParcelableExtraCompat(EXTRA_SOURCE_URI, Uri::class.java) ?: return null
+        return RenderRequest(
+            id = id,
+            sourceUri = sourceUri,
+            settings = FrameSettings(
+                format = FrameFormat.valueOf(getStringExtra(EXTRA_FORMAT) ?: "SQUARE"),
+                paddingStyle = PaddingStyle.valueOf(getStringExtra(EXTRA_PADDING_STYLE) ?: "SOLID"),
+                bgColor = getIntExtra(EXTRA_BG_COLOR, -1),
+                adjustments = Adjustments(
+                    brightness = getFloatExtra(EXTRA_BRIGHTNESS, 1f),
+                    saturation = getFloatExtra(EXTRA_SATURATION, 1f),
+                    sharpness = getFloatExtra(EXTRA_SHARPNESS, 0f),
+                    grain = getFloatExtra(EXTRA_GRAIN, 0f),
+                ),
+            ),
+            displayName = getStringExtra(EXTRA_DISPLAY_NAME) ?: "video",
+        )
+    }
+
+    private fun ensureProcessing() {
+        if (processingJob?.isActive == true) return
+        processingJob = serviceScope.launch {
+            startForeground(NOTIFICATION_ID, buildNotification("Rendering video…", 0f))
+            acquireWakeLock()
+            try {
+                while (true) {
+                    val request = queue.poll() ?: break
+                    processOne(request)
+                }
+            } finally {
+                releaseWakeLock()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+    }
+
+    private suspend fun processOne(request: RenderRequest) {
+        RenderStateHolder.markStarted(request.id)
+        try {
+            val outFile = File(cacheDir, "render_${request.id}.mp4")
+            val soundDropped = VideoProcessor.render(
+                context = applicationContext,
+                sourceUri = request.sourceUri,
+                settings = request.settings,
+                outputFile = outFile,
+            ) { p ->
+                RenderStateHolder.updateProgress(request.id, p)
+                updateNotification(request.displayName, p)
+            }
+            val savedUri = saveVideoToGallery(
+                applicationContext,
+                outFile,
+                outputFileName(request.settings.format, request.displayName),
+            )
+            RenderStateHolder.markComplete(
+                request.id,
+                savedUri,
+                // Shown as a badge on the card; the source's audio couldn't be copied.
+                warning = if (soundDropped) "No sound" else null,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "render failed for ${request.displayName}", e)
+            RenderStateHolder.markFailed(request.id, e.message ?: e.toString())
+        }
+    }
+
+    private fun acquireWakeLock() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Squareify::RenderWakeLock").apply {
+            setReferenceCounted(false)
+            acquire(60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        wakeLock = null
+    }
+
+    private fun buildNotification(text: String, progress: Float): Notification {
+        ensureChannel()
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setProgress(100, (100 * progress).toInt(), false)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+    }
+
+    private fun updateNotification(displayName: String, progress: Float) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(
+            NOTIFICATION_ID,
+            buildNotification("Rendering $displayName… ${(100 * progress).toInt()}%", progress),
+        )
+    }
+
+    private fun ensureChannel() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "Video rendering", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+    }
+
+    companion object {
+        private const val TAG = "RenderService"
+        private const val CHANNEL_ID = "render"
+        private const val NOTIFICATION_ID = 1001
+
+        private const val EXTRA_ID = "id"
+        private const val EXTRA_SOURCE_URI = "sourceUri"
+        private const val EXTRA_FORMAT = "format"
+        private const val EXTRA_PADDING_STYLE = "paddingStyle"
+        private const val EXTRA_BG_COLOR = "bgColor"
+        private const val EXTRA_BRIGHTNESS = "brightness"
+        private const val EXTRA_SATURATION = "saturation"
+        private const val EXTRA_SHARPNESS = "sharpness"
+        private const val EXTRA_GRAIN = "grain"
+        private const val EXTRA_DISPLAY_NAME = "displayName"
+
+        fun enqueue(context: Context, item: MediaItem) {
+            val intent = Intent(context, RenderService::class.java)
+            intent.putExtra(EXTRA_ID, item.id)
+            intent.putExtra(EXTRA_SOURCE_URI, item.sourceUri)
+            intent.putExtra(EXTRA_FORMAT, item.settings.format.name)
+            intent.putExtra(EXTRA_PADDING_STYLE, item.settings.paddingStyle.name)
+            intent.putExtra(EXTRA_BG_COLOR, item.settings.bgColor)
+            intent.putExtra(EXTRA_BRIGHTNESS, item.settings.adjustments.brightness)
+            intent.putExtra(EXTRA_SATURATION, item.settings.adjustments.saturation)
+            intent.putExtra(EXTRA_SHARPNESS, item.settings.adjustments.sharpness)
+            intent.putExtra(EXTRA_GRAIN, item.settings.adjustments.grain)
+            intent.putExtra(EXTRA_DISPLAY_NAME, item.displayName)
+            context.startForegroundService(intent)
+        }
+    }
+}
+
+private fun <T : Parcelable> Intent.getParcelableExtraCompat(key: String, clazz: Class<T>): T? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        getParcelableExtra(key, clazz)
+    } else {
+        @Suppress("DEPRECATION")
+        getParcelableExtra(key)
+    }
