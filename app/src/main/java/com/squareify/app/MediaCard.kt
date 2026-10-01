@@ -84,7 +84,12 @@ fun MediaCard(
             )
         }
 
-        if (item.isVideo) {
+        val label = when {
+            item.collage != null -> "Collage"
+            item.isVideo -> "Video"
+            else -> null
+        }
+        if (label != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -93,7 +98,7 @@ fun MediaCard(
                     .background(Color.Black.copy(alpha = 0.6f))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text("Video", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall)
             }
         }
 

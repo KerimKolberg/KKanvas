@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -121,6 +122,7 @@ fun SquarifyApp(viewModel: MainViewModel) {
     var confirmTrash by remember { mutableStateOf(false) }
     var trashIds by remember { mutableStateOf<Set<String>?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+    var newCollage by remember { mutableStateOf<Collage?>(null) }
 
     val selectionMode = viewModel.selectedIds.isNotEmpty()
     val selectedItems = items.filter { it.id in viewModel.selectedIds }
@@ -221,6 +223,21 @@ fun SquarifyApp(viewModel: MainViewModel) {
                     },
                     onShare = { shareOutputs(context, selectedSaved) },
                     onRemove = viewModel::removeSelected,
+                    collageEnabled = selectedItems.size in 2..CollageLayout.MAX_PHOTOS,
+                    onCollage = {
+                        when {
+                            selectedItems.any { it.isVideo } -> Toast.makeText(
+                                context, "Video collages are coming next. Select only photos for now.", Toast.LENGTH_LONG,
+                            ).show()
+                            selectedItems.any { it.collage != null } -> Toast.makeText(
+                                context, "A collage can't contain another collage.", Toast.LENGTH_LONG,
+                            ).show()
+                            else -> newCollage = Collage(
+                                layout = CollageLayout.forCount(selectedItems.size).first(),
+                                cells = selectedItems.map { CollageCell(it.sourceUri, it.displayName, it.preview) },
+                            )
+                        }
+                    },
                 )
             }
         },
@@ -342,10 +359,30 @@ fun SquarifyApp(viewModel: MainViewModel) {
     }
 
     items.firstOrNull { it.id == editingItemId }?.let { item ->
-        EditSheet(
-            item = item,
-            onDismiss = { editingItemId = null },
-            onApply = { viewModel.applyEdit(item.id, it) },
+        val collage = item.collage
+        if (collage != null) {
+            CollageEditor(
+                initialCollage = collage,
+                initialSettings = item.settings,
+                isNew = false,
+                onDismiss = { editingItemId = null },
+                onApply = { c, s -> viewModel.applyCollageEdit(item.id, c, s) },
+            )
+        } else {
+            EditSheet(
+                item = item,
+                onDismiss = { editingItemId = null },
+                onApply = { viewModel.applyEdit(item.id, it) },
+            )
+        }
+    }
+    newCollage?.let { collage ->
+        CollageEditor(
+            initialCollage = collage,
+            initialSettings = viewModel.globalSettings,
+            isNew = true,
+            onDismiss = { newCollage = null },
+            onApply = { c, s -> viewModel.createCollage(c, s) },
         )
     }
     items.firstOrNull { it.id == previewItemId }?.let { item ->
@@ -399,16 +436,15 @@ private fun SelectionBar(
     onTrashOriginals: () -> Unit,
     onShare: () -> Unit,
     onRemove: () -> Unit,
-    onCollage: (() -> Unit)? = null,
+    collageEnabled: Boolean,
+    onCollage: () -> Unit,
 ) {
     BottomAppBar {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            if (onCollage != null) {
-                SelectionAction(Icons.Default.Dashboard, "Collage", enabled = true, onClick = onCollage)
-            }
+            SelectionAction(Icons.Default.Dashboard, "Collage", enabled = collageEnabled, onClick = onCollage)
             SelectionAction(Icons.Default.Share, "Share", enabled = savedCount > 0, onClick = onShare)
             SelectionAction(
                 Icons.Default.DeleteSweep,

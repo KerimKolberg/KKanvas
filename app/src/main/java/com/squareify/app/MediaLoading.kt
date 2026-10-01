@@ -7,7 +7,11 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import com.squareify.app.processing.CollageRenderer
 import com.squareify.app.processing.PhotoProcessor
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** Photos are decoded at most this large before saving; 200 MP originals won't fit in memory. */
 const val MAX_DECODE_DIMENSION = 6000
@@ -83,6 +87,37 @@ fun mediaStoreUri(context: Context, uri: Uri, isVideo: Boolean): Uri? {
 }
 
 private const val PHOTO_PICKER_LOCAL = "com.android.providers.media.photopicker"
+
+/** A collage drawn from its cells' in-memory previews, longer side at most [maxSide]. */
+fun renderCollagePreview(collage: Collage, settings: FrameSettings, maxSide: Int): Bitmap {
+    val (w, h) = collageSize(settings.format)
+    val scale = min(1f, maxSide.toFloat() / max(w, h))
+    return CollageRenderer.render(
+        collage,
+        collage.cells.map { it.preview },
+        settings,
+        (w * scale).roundToInt(),
+        (h * scale).roundToInt(),
+    )
+}
+
+/**
+ * A collage from the original photos, longer side at most [maxSide]. Each photo is loaded only as
+ * large as its cell needs (with room to zoom), which keeps nine photos within memory.
+ */
+fun renderCollage(context: Context, collage: Collage, settings: FrameSettings, maxSide: Int = Int.MAX_VALUE): Bitmap {
+    val (fullW, fullH) = collageSize(settings.format)
+    val scale = min(1f, maxSide.toFloat() / max(fullW, fullH))
+    val w = (fullW * scale).roundToInt()
+    val h = (fullH * scale).roundToInt()
+    val rects = CollageRenderer.cellRects(collage, settings, w, h)
+    val sources = collage.cells.mapIndexed { i, cell ->
+        val rect = rects.getOrNull(i) ?: return@mapIndexed null
+        val needed = (max(rect.width(), rect.height()) * cell.zoom * 2).roundToInt().coerceIn(512, 4000)
+        PhotoProcessor.loadDownscaledBitmap(context, cell.sourceUri, needed)
+    }
+    return CollageRenderer.render(collage, sources, settings, w, h)
+}
 
 /** Card-sized preview of what will be saved. */
 fun renderThumbnail(source: Bitmap, settings: FrameSettings): Bitmap =

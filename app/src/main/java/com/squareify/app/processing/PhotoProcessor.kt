@@ -17,6 +17,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.net.Uri
+import com.squareify.app.Adjustments
 import com.squareify.app.Border
 import com.squareify.app.FrameFormat
 import com.squareify.app.FrameSettings
@@ -120,15 +121,23 @@ object PhotoProcessor {
      * with the background, then applies the adjustments.
      */
     fun frame(source: Bitmap, settings: FrameSettings, width: Int, height: Int): Bitmap {
-        val adjustments = settings.adjustments
         val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
 
         drawBackground(canvas, source, settings, width, height)
-        val photo = photoRect(source, settings.border.margin * MAX_MARGIN, width, height)
-        drawPhoto(canvas, source, photo, settings.border)
+        val photo = photoRect(source, marginInset(settings, width, height), width, height)
+        drawImage(canvas, source, fullRect(source), photo, settings.border)
 
-        var result = applyColorAdjustments(output, adjustments.brightness, adjustments.saturation)
+        return applyAdjustments(output, settings.adjustments)
+    }
+
+    /** The margin on each side in pixels, for a [width] x [height] canvas. */
+    fun marginInset(settings: FrameSettings, width: Int, height: Int): Float =
+        settings.border.margin * MAX_MARGIN * min(width, height)
+
+    /** Brightness/saturation, then sharpening and grain. May recycle [bitmap] and return a new one. */
+    fun applyAdjustments(bitmap: Bitmap, adjustments: Adjustments): Bitmap {
+        var result = applyColorAdjustments(bitmap, adjustments.brightness, adjustments.saturation)
         if (adjustments.sharpness > 0f) {
             result = applySharpen(result, adjustments.sharpness)
         }
@@ -138,7 +147,7 @@ object PhotoProcessor {
         return result
     }
 
-    private fun drawBackground(canvas: Canvas, source: Bitmap, settings: FrameSettings, width: Int, height: Int) {
+    fun drawBackground(canvas: Canvas, source: Bitmap, settings: FrameSettings, width: Int, height: Int) {
         when (settings.paddingStyle) {
             PaddingStyle.SOLID -> canvas.drawColor(settings.bgColor)
             PaddingStyle.GRADIENT -> {
@@ -158,9 +167,10 @@ object PhotoProcessor {
         }
     }
 
+    private fun fullRect(source: Bitmap) = RectF(0f, 0f, source.width.toFloat(), source.height.toFloat())
+
     /** Where the photo goes: as large as fits inside the margin, centred. */
-    private fun photoRect(source: Bitmap, marginFraction: Float, width: Int, height: Int): RectF {
-        val inset = marginFraction * min(width, height)
+    private fun photoRect(source: Bitmap, inset: Float, width: Int, height: Int): RectF {
         val scale = min(
             (width - 2 * inset) / source.width,
             (height - 2 * inset) / source.height,
@@ -172,7 +182,11 @@ object PhotoProcessor {
         return RectF(left, top, left + w, top + h)
     }
 
-    private fun drawPhoto(canvas: Canvas, source: Bitmap, rect: RectF, border: Border) {
+    /**
+     * Draws the [crop] of [source] into [rect], with the border's rounded corners and shadow.
+     * Also used for each cell of a collage.
+     */
+    fun drawImage(canvas: Canvas, source: Bitmap, crop: RectF, rect: RectF, border: Border) {
         val shortSide = min(rect.width(), rect.height())
         val radius = border.cornerRadius * MAX_CORNER_RADIUS * shortSide
 
@@ -189,22 +203,14 @@ object PhotoProcessor {
             canvas.drawRoundRect(rect, radius, radius, shadowPaint)
         }
 
+        // A bitmap shader keeps rounded edges anti-aliased (clipPath wouldn't on a software canvas).
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        if (radius <= 0f) {
-            canvas.drawBitmap(source, null, rect, paint)
-        } else {
-            // A bitmap shader keeps the rounded edge anti-aliased (clipPath wouldn't on a software canvas).
-            val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-            val matrix = Matrix()
-            matrix.setRectToRect(
-                RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()),
-                rect,
-                Matrix.ScaleToFit.FILL,
-            )
-            shader.setLocalMatrix(matrix)
-            paint.shader = shader
-            canvas.drawRoundRect(rect, radius, radius, paint)
-        }
+        val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        val matrix = Matrix()
+        matrix.setRectToRect(crop, rect, Matrix.ScaleToFit.FILL)
+        shader.setLocalMatrix(matrix)
+        paint.shader = shader
+        canvas.drawRoundRect(rect, radius, radius, paint)
     }
 
     private fun drawBlurredBackground(canvas: Canvas, source: Bitmap, width: Int, height: Int, radius: Int) {

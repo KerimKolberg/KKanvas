@@ -9,10 +9,12 @@
 - Dark mode, settings tabs (Background / Border / Adjust), settings open at launch.
 - Move originals to the phone's trash (30 days) + Recently deleted (restore / delete now).
 
+- Selection mode (long-press): trash originals / share / remove the selection, make a collage.
+- Photo collages: 13 layouts for 2-9 photos, Fill/Fit, zoom, drag to pan, reorder, spacing;
+  backgrounds, border (margin, rounded cells, shadow) and adjustments apply. Saved 2160 px wide.
+
 ## Next
-1. **Selection mode**: long-press a card to select; tap to toggle. Actions for the selection:
-   move originals to trash, remove from list, share, make collage.
-2. **Collages** (photos first, then videos)
+1. **Video collages** (photo collages are done; see below for the design)
    - Pick 2-9 items via selection mode, then "Make collage".
    - Layouts: 2 side by side, 2 stacked, 1 big + 2, 2x2, 3x2, 3x3; any of the four formats.
    - Per cell: Fill (crop) or Fit (padding); tap a cell to pan/zoom its crop; drag to swap cells.

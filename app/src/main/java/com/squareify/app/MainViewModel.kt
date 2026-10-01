@@ -21,6 +21,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** The grid and everything done to it. Lives in a ViewModel so it survives rotation and theme changes. */
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,7 +51,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Saved items (all, or only those in [ids]) whose original can still be moved to the trash. */
     fun trashableItems(ids: Set<String>? = null): List<MediaItem> =
         items.filter {
-            (ids == null || it.id in ids) &&
+            // A collage's originals are the photos it was made from, which have their own items.
+            (ids == null || it.id in ids) && it.collage == null &&
                 it.isRendered && !it.isProcessing && !it.originalTrashed &&
                 mediaStoreUri(context, it.sourceUri, it.isVideo) != null
         }
@@ -166,6 +170,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 updateItem(id) { it.copy(thumbnail = thumbnail) }
             }
             if (!item.isVideo) autoSavePhoto(id)
+        }
+    }
+
+    /** Adds a new photo collage at the top of the grid and saves it. */
+    fun createCollage(collage: Collage, settings: FrameSettings) {
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val item = MediaItem(
+            sourceUri = collage.cells.first().sourceUri,
+            isVideo = false,
+            displayName = "collage_$stamp",
+            settings = settings,
+            collage = collage,
+        )
+        items = listOf(item) + items
+        clearSelection()
+        refreshCollage(item.id, collage, settings)
+    }
+
+    fun applyCollageEdit(id: String, collage: Collage, settings: FrameSettings) {
+        // As with photos: outputUri stays so the next save overwrites the earlier file.
+        updateItem(id) { it.copy(collage = collage, settings = settings, isRendered = false, warning = null) }
+        refreshCollage(id, collage, settings)
+    }
+
+    private fun refreshCollage(id: String, collage: Collage, settings: FrameSettings) {
+        viewModelScope.launch {
+            val thumbnail = withContext(Dispatchers.Default) { renderCollagePreview(collage, settings, THUMBNAIL_SIZE) }
+            updateItem(id) { it.copy(thumbnail = thumbnail) }
+            autoSavePhoto(id)
         }
     }
 
@@ -288,12 +321,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val item = items.firstOrNull { it.id == id } ?: return
             try {
                 val savedUri = withContext(Dispatchers.Default) {
-                    val source = PhotoProcessor.loadDownscaledBitmap(context, item.sourceUri, MAX_DECODE_DIMENSION)
-                    val framed = PhotoProcessor.frame(source, item.settings)
+                    val collage = item.collage
+                    val framed = if (collage != null) {
+                        renderCollage(context, collage, item.settings)
+                    } else {
+                        val source = PhotoProcessor.loadDownscaledBitmap(context, item.sourceUri, MAX_DECODE_DIMENSION)
+                        PhotoProcessor.frame(source, item.settings)
+                    }
                     val uri = GallerySaver.saveImage(
                         context,
                         framed,
-                        outputFileName(item.settings.format, item.displayName),
+                        if (collage != null) item.displayName else outputFileName(item.settings.format, item.displayName),
                         replace = item.outputUri,
                     )
                     framed.recycle()
@@ -301,7 +339,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 updateItem(id) {
                     // A newer edit arrived meanwhile: it's still waiting for its own save.
-                    val current = it.settings == item.settings
+                    val current = it.settings == item.settings && it.collage == item.collage
                     it.copy(outputUri = savedUri, isProcessing = !current, isRendered = current)
                 }
             } catch (e: Exception) {

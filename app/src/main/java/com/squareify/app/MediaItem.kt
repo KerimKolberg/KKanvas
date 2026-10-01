@@ -77,4 +77,6 @@ data class MediaItem(
     val warning: String? = null,
     /** The original was moved to the phone's trash after the result was saved. */
     val originalTrashed: Boolean = false,
+    /** Set for a collage; its photos are in the cells and [sourceUri] is the first one. */
+    val collage: Collage? = null,
 )

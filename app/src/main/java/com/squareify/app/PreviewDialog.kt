@@ -45,8 +45,23 @@ fun PreviewDialog(item: MediaItem, onDismiss: () -> Unit) {
     var loading by remember(item.id) { mutableStateOf(true) }
     var showOriginal by remember { mutableStateOf(false) }
 
-    LaunchedEffect(item.id, item.settings) {
+    LaunchedEffect(item.id, item.settings, item.collage) {
         loading = true
+        val collage = item.collage
+        if (collage != null) {
+            // A collage has no single original to compare with.
+            original = null
+            withContext(Dispatchers.IO) {
+                try {
+                    renderCollage(context, collage, item.settings, FULLSCREEN_SIZE)
+                } catch (e: Exception) {
+                    Log.w("Squareify", "full-size collage preview failed", e)
+                    null
+                }
+            }?.let { rendered = it }
+            loading = false
+            return@LaunchedEffect
+        }
         val source = withContext(Dispatchers.IO) {
             try {
                 loadSourceImage(context, item.sourceUri, item.isVideo, FULLSCREEN_SIZE)
@@ -77,7 +92,7 @@ fun PreviewDialog(item: MediaItem, onDismiss: () -> Unit) {
                     })
                 },
         ) {
-            (if (showOriginal) original else rendered)?.let {
+            (if (showOriginal && original != null) original else rendered)?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
                     contentDescription = if (showOriginal) "Original" else "Result",
@@ -91,7 +106,11 @@ fun PreviewDialog(item: MediaItem, onDismiss: () -> Unit) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
             }
             Text(
-                if (showOriginal) "Original" else "Hold to see the original",
+                when {
+                    original == null -> ""
+                    showOriginal -> "Original"
+                    else -> "Hold to see the original"
+                },
                 color = Color.White,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
