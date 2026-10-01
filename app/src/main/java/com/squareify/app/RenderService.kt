@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.IntentCompat
+import com.squareify.app.processing.VideoCollageProcessor
 import com.squareify.app.processing.VideoProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
@@ -34,12 +36,19 @@ class RenderService : Service() {
         val displayName: String,
         /** An earlier render of the same item, overwritten instead of adding a copy. */
         val replaceUri: Uri?,
+        /** Set for a video collage; then [sourceUri] is unused. */
+        val collage: CollageSpec?,
     )
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var wakeLock: PowerManager.WakeLock? = null
     private val queue = ConcurrentLinkedQueue<RenderRequest>()
     private var processingJob: Job? = null
+    /**
+     * Where each item's latest render was saved. An edit made while the item was still rendering
+     * is queued without knowing that file; it overwrites it instead of adding a second copy.
+     */
+    private val savedUris = ConcurrentHashMap<String, Uri>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,6 +72,7 @@ class RenderService : Service() {
                 ?: FrameSettings(),
             displayName = getStringExtra(EXTRA_DISPLAY_NAME) ?: "video",
             replaceUri = IntentCompat.getParcelableExtra(this, EXTRA_REPLACE_URI, Uri::class.java),
+            collage = IntentCompat.getSerializableExtra(this, EXTRA_COLLAGE, CollageSpec::class.java),
         )
     }
 
@@ -88,21 +98,24 @@ class RenderService : Service() {
         RenderStateHolder.markStarted(request.id)
         try {
             val outFile = File(cacheDir, "render_${request.id}.mp4")
-            val soundDropped = VideoProcessor.render(
-                context = applicationContext,
-                sourceUri = request.sourceUri,
-                settings = request.settings,
-                outputFile = outFile,
-            ) { p ->
+            val onProgress = { p: Float ->
                 RenderStateHolder.updateProgress(request.id, p)
                 updateNotification(request.displayName, p)
+            }
+            val collage = request.collage
+            val soundDropped = if (collage != null) {
+                VideoCollageProcessor.render(applicationContext, collage.toCollage(), request.settings, outFile, onProgress)
+            } else {
+                VideoProcessor.render(applicationContext, request.sourceUri, request.settings, outFile, onProgress)
             }
             val savedUri = GallerySaver.saveVideo(
                 applicationContext,
                 outFile,
-                outputFileName(request.settings.format, request.displayName),
-                replace = request.replaceUri,
+                // Collages are already named, e.g. "collage_20261001_120000".
+                if (collage != null) request.displayName else outputFileName(request.settings.format, request.displayName),
+                replace = request.replaceUri ?: savedUris[request.id],
             )
+            savedUri?.let { savedUris[request.id] = it }
             RenderStateHolder.markComplete(
                 request.id,
                 savedUri,
@@ -169,6 +182,7 @@ class RenderService : Service() {
         private const val EXTRA_SETTINGS = "settings"
         private const val EXTRA_DISPLAY_NAME = "displayName"
         private const val EXTRA_REPLACE_URI = "replaceUri"
+        private const val EXTRA_COLLAGE = "collage"
 
         fun enqueue(context: Context, item: MediaItem) {
             val intent = Intent(context, RenderService::class.java)
@@ -177,6 +191,7 @@ class RenderService : Service() {
             intent.putExtra(EXTRA_SETTINGS, item.settings)
             intent.putExtra(EXTRA_DISPLAY_NAME, item.displayName)
             item.outputUri?.let { intent.putExtra(EXTRA_REPLACE_URI, it) }
+            item.collage?.let { intent.putExtra(EXTRA_COLLAGE, it.toSpec()) }
             context.startForegroundService(intent)
         }
     }

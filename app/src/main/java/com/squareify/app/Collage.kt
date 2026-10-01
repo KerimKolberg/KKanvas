@@ -2,6 +2,7 @@ package com.squareify.app
 
 import android.graphics.Bitmap
 import android.net.Uri
+import java.io.Serializable
 import kotlin.math.min
 
 /** A rectangle in fractions (0–1) of an area, or in pixels; plain floats so it's unit-testable. */
@@ -58,12 +59,16 @@ enum class CollageLayout(val label: String, val cells: List<Box>) {
 
 enum class CellFit { FILL, FIT }
 
-/** One photo in a collage. */
+/** What a clip shorter than the collage does once it ends. */
+enum class ShortClips { FREEZE, LOOP }
+
+/** One photo or video clip in a collage. */
 data class CollageCell(
     val sourceUri: Uri,
     val displayName: String,
-    /** The photo, downscaled; for live previews. */
+    /** The photo (or a frame from the middle of the clip), downscaled; for live previews. */
     val preview: Bitmap?,
+    val isVideo: Boolean = false,
     val fit: CellFit = CellFit.FILL,
     /** 1 = the photo just fills its cell; larger zooms in. */
     val zoom: Float = 1f,
@@ -77,19 +82,70 @@ data class Collage(
     val cells: List<CollageCell>,
     /** Gap between cells, 0–1. */
     val spacing: Float = DEFAULT_SPACING,
+    val shortClips: ShortClips = ShortClips.FREEZE,
+    /** The cell whose clip the collage takes its sound from; null = silent. */
+    val soundCell: Int? = cells.indexOfFirst { it.isVideo }.takeIf { it >= 0 },
 ) {
+    /** With a clip in it, the collage is saved as a video. */
+    val hasVideo: Boolean get() = cells.any { it.isVideo }
+
     companion object {
         const val DEFAULT_SPACING = 0.3f
         /** The gap at 100% spacing, as a fraction of the area's shorter side. */
         const val MAX_SPACING = 0.06f
         /** Saved collages are this wide (Instagram shows at most 1440 px); the height follows the format. */
         const val OUTPUT_WIDTH = 2160
+        /** Video collages are this wide: Instagram's video width, and quick to render. */
+        const val VIDEO_OUTPUT_WIDTH = 1080
     }
 }
 
-/** Saved size of a collage in [format]. */
+/** Saved size of a photo collage in [format]. */
 fun collageSize(format: FrameFormat): Pair<Int, Int> =
     Collage.OUTPUT_WIDTH to Collage.OUTPUT_WIDTH * format.heightRatio / format.widthRatio
+
+/** Saved size of a video collage in [format]. */
+fun videoCollageSize(format: FrameFormat): Pair<Int, Int> =
+    Collage.VIDEO_OUTPUT_WIDTH to Collage.VIDEO_OUTPUT_WIDTH * format.heightRatio / format.widthRatio
+
+/** A [Collage] without its previews, so it can travel in an Intent to the render service. */
+data class CollageSpec(
+    val layout: CollageLayout,
+    val cells: List<CellSpec>,
+    val spacing: Float,
+    val shortClips: ShortClips,
+    val soundCell: Int?,
+) : Serializable {
+    data class CellSpec(
+        val uri: String,
+        val displayName: String,
+        val isVideo: Boolean,
+        val fit: CellFit,
+        val zoom: Float,
+        val panX: Float,
+        val panY: Float,
+    ) : Serializable
+
+    fun toCollage() = Collage(
+        layout = layout,
+        cells = cells.map {
+            CollageCell(Uri.parse(it.uri), it.displayName, null, it.isVideo, it.fit, it.zoom, it.panX, it.panY)
+        },
+        spacing = spacing,
+        shortClips = shortClips,
+        soundCell = soundCell,
+    )
+}
+
+fun Collage.toSpec() = CollageSpec(
+    layout = layout,
+    cells = cells.map {
+        CollageSpec.CellSpec(it.sourceUri.toString(), it.displayName, it.isVideo, it.fit, it.zoom, it.panX, it.panY)
+    },
+    spacing = spacing,
+    shortClips = shortClips,
+    soundCell = soundCell,
+)
 
 /**
  * Pixel rectangles of the cells on a canvas: [area] is the canvas inside the margin. Cells are

@@ -80,7 +80,7 @@ internal class GlFrameReader(
             intArrayOf(EGL14.EGL_WIDTH, width, EGL14.EGL_HEIGHT, height, EGL14.EGL_NONE), 0,
         )
         check(eglSurface != EGL14.EGL_NO_SURFACE) { "eglCreatePbufferSurface failed" }
-        check(EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) { "eglMakeCurrent failed" }
+        makeCurrent()
 
         program = createProgram()
         val textures = IntArray(1)
@@ -102,6 +102,8 @@ internal class GlFrameReader(
 
     /** Latches the arrived frame and returns it upright, plus its timestamp in microseconds. */
     fun readFrame(): Pair<Bitmap, Long> {
+        // Several readers may share this thread (video collages); each has its own context.
+        makeCurrent()
         surfaceTexture.updateTexImage()
         surfaceTexture.getTransformMatrix(texMatrix)
 
@@ -129,6 +131,7 @@ internal class GlFrameReader(
     }
 
     fun release() {
+        makeCurrent()
         surface.release()
         surfaceTexture.release()
         GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
@@ -136,7 +139,11 @@ internal class GlFrameReader(
         EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
         EGL14.eglDestroySurface(display, eglSurface)
         EGL14.eglDestroyContext(display, context)
-        EGL14.eglTerminate(display)
+        // No eglTerminate: the display is shared with any other readers still in use.
+    }
+
+    private fun makeCurrent() {
+        check(EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) { "eglMakeCurrent failed" }
     }
 
     private fun createProgram(): Int {

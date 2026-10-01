@@ -173,12 +173,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Adds a new photo collage at the top of the grid and saves it. */
+    /** Adds a new collage at the top of the grid and saves it (a video collage starts rendering). */
     fun createCollage(collage: Collage, settings: FrameSettings) {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val item = MediaItem(
             sourceUri = collage.cells.first().sourceUri,
-            isVideo = false,
+            isVideo = collage.hasVideo,
             displayName = "collage_$stamp",
             settings = settings,
             collage = collage,
@@ -198,7 +198,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val thumbnail = withContext(Dispatchers.Default) { renderCollagePreview(collage, settings, THUMBNAIL_SIZE) }
             updateItem(id) { it.copy(thumbnail = thumbnail) }
-            autoSavePhoto(id)
+            // With clips in it, the collage is a video and renders in the background service.
+            if (collage.hasVideo) renderVideo(id) else autoSavePhoto(id)
         }
     }
 

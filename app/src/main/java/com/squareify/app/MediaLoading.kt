@@ -102,8 +102,9 @@ fun renderCollagePreview(collage: Collage, settings: FrameSettings, maxSide: Int
 }
 
 /**
- * A collage from the original photos, longer side at most [maxSide]. Each photo is loaded only as
- * large as its cell needs (with room to zoom), which keeps nine photos within memory.
+ * A collage from the original photos (clips show their middle frame), longer side at most
+ * [maxSide]. Each photo is loaded only as large as its cell needs (with room to zoom), which keeps
+ * nine photos within memory.
  */
 fun renderCollage(context: Context, collage: Collage, settings: FrameSettings, maxSide: Int = Int.MAX_VALUE): Bitmap {
     val (fullW, fullH) = collageSize(settings.format)
@@ -114,7 +115,7 @@ fun renderCollage(context: Context, collage: Collage, settings: FrameSettings, m
     val sources = collage.cells.mapIndexed { i, cell ->
         val rect = rects.getOrNull(i) ?: return@mapIndexed null
         val needed = (max(rect.width(), rect.height()) * cell.zoom * 2).roundToInt().coerceIn(512, 4000)
-        PhotoProcessor.loadDownscaledBitmap(context, cell.sourceUri, needed)
+        loadSourceImage(context, cell.sourceUri, cell.isVideo, needed)
     }
     return CollageRenderer.render(collage, sources, settings, w, h)
 }

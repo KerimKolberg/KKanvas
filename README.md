@@ -18,6 +18,12 @@ and grain adjustments.
 - Live preview while editing, full-screen preview on tap; hold either to see the original.
 - Saving again after an edit overwrites the earlier file instead of adding a copy.
 - The settings for new media are remembered between launches; the grid survives rotation.
+- Long-press selects items: share them, remove them, move their originals to the phone's
+  trash (restorable for 30 days under ⋮ → Recently deleted), or make a collage.
+- Collages of 2-9 photos and/or clips in 13 layouts, each cell filled (zoom, drag to pan)
+  or fitted. Photo collages are saved 2160 px wide. With clips in it a collage is a video
+  (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
+  clips freeze on their last frame or loop, and the sound comes from one chosen clip or none.
 
 Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 
@@ -28,17 +34,28 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `MainActivity.kt` | Activity, main screen, settings panel, share-in/share-out |
 | `MainViewModel.kt` | The grid and its actions: adding, saving photos, rendering videos, edits |
 | `MediaCard.kt`, `EditSheet.kt`, `PreviewDialog.kt` | Grid card, edit sheet with live preview, full-screen preview |
+| `CollageEditor.kt` | Collage sheet: preview to tap/drag, cell controls, layouts, clip options |
+| `RecentlyDeleted.kt`, `TrashStore.kt` | Originals moved to the trash, and restoring them |
 | `SettingsControls.kt` | Format, background, border and adjustment controls, colour picker |
 | `MediaItem.kt` | `MediaItem`, `FrameSettings`, `FrameFormat`, `Border`, `Adjustments` |
-| `MediaLoading.kt` | Loading photos/video frames, thumbnails, output file names |
+| `Collage.kt` | Collage layouts, cells, clip options, cell geometry |
+| `MediaLoading.kt` | Loading photos/video frames, thumbnails, collage previews, output file names |
 | `GallerySaver.kt` | Saves to Pictures/ and Movies/Squareify, overwriting earlier saves |
 | `SettingsStore.kt` | Remembers the settings for new media |
 | `RenderService.kt`, `RenderStateHolder.kt` | Background video rendering and its progress |
 | `processing/PhotoProcessor.kt` | Padding to a format, backgrounds, border, colour/sharpen/grain |
-| `processing/VideoProcessor.kt` | MediaCodec decode, pad each frame, H.264 encode, audio remux |
+| `processing/CollageRenderer.kt` | Draws a collage from its cells' pictures |
+| `processing/VideoProcessor.kt` | Single video: decode, pad each frame, encode, copy the sound |
+| `processing/VideoCollageProcessor.kt` | Video collage: one decoder per clip on a shared timeline |
+| `processing/GlFrameReader.kt` | Reads decoded frames back through OpenGL |
+| `processing/Mp4Writer.kt` | H.264 encoder + MP4 muxer shared by both video paths |
 | `processing/ColorExtractor.kt` | Suggested background colours from a photo |
 | `processing/StackBlur.kt` | Fast blur used for the blurred background |
-| `processing/YuvImageWriter.kt` | Writes ARGB frames into the encoder's YUV input |
+| `processing/YuvImageWriter.kt` | Writes ARGB frames into the encoder's YUV input (BT.709 video range) |
+
+On-device tests (`app/src/androidTest`) render synthetic clips and check motion, timing,
+sound and colours; install both APKs and run them with
+`adb shell am instrument -w com.squareify.app.test/androidx.test.runner.AndroidJUnitRunner`.
 
 ## Build
 

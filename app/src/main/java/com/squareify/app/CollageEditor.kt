@@ -27,8 +27,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,10 +54,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CollageRenderer
@@ -63,7 +69,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 
-/** Creates or edits a photo collage, with a live preview you can tap and drag on. */
+/** Creates or edits a collage of photos and clips, with a live preview you can tap and drag on. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollageEditor(
@@ -129,7 +135,7 @@ fun CollageEditor(
                 onPan = ::pan,
             )
             Text(
-                if (selectedCell == null) "Tap a photo to adjust it" else "Drag to move the photo inside its cell",
+                if (selectedCell == null) "Tap a photo or clip to adjust it" else "Drag to move it inside its cell",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -148,10 +154,20 @@ fun CollageEditor(
                         val cells = collage.cells.toMutableList()
                         val other = index + step
                         cells[index] = cells[other].also { cells[other] = cells[index] }
-                        collage = collage.copy(cells = cells)
+                        // The sound stays with its clip.
+                        val soundCell = when (collage.soundCell) {
+                            index -> other
+                            other -> index
+                            else -> collage.soundCell
+                        }
+                        collage = collage.copy(cells = cells, soundCell = soundCell)
                         selectedCell = other
                     },
                 )
+            }
+
+            if (collage.hasVideo) {
+                VideoOptions(collage = collage, onChange = { collage = it })
             }
 
             Text("Layout", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
@@ -177,6 +193,16 @@ fun CollageEditor(
             ) {
                 Text(if (isNew) "Create collage" else "Apply")
             }
+            if (collage.hasVideo) {
+                Text(
+                    "The video renders in the background; its card shows the progress.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 4.dp),
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -199,6 +225,8 @@ private fun CollagePreview(
     val currentOnSelect by rememberUpdatedState(onSelectCell)
     val currentOnPan by rememberUpdatedState(onPan)
     val outline = MaterialTheme.colorScheme.primary
+    val textMeasurer = rememberTextMeasurer()
+    val badgeText = MaterialTheme.typography.labelMedium.copy(color = Color.White)
 
     Box(
         modifier = Modifier
@@ -240,10 +268,24 @@ private fun CollagePreview(
                 contentScale = ContentScale.Fit,
             )
         }
-        if (rendered != null && selectedCell != null) {
+        if (rendered != null) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val boxSize = IntSize(size.width.toInt(), size.height.toInt())
-                val rect = screenCellRects(boxSize, rendered, collage, settings).getOrNull(selectedCell)
+                val rects = screenCellRects(boxSize, rendered, collage, settings)
+                // Clips are numbered as in the Sound choice; the one the sound comes from is highlighted.
+                videoCells(collage).forEachIndexed { n, cellIndex ->
+                    val rect = rects.getOrNull(cellIndex) ?: return@forEachIndexed
+                    val radius = 11.dp.toPx()
+                    val center = Offset(rect.left + 6.dp.toPx() + radius, rect.top + 6.dp.toPx() + radius)
+                    drawCircle(
+                        color = if (cellIndex == collage.soundCell) outline else Color.Black.copy(alpha = 0.6f),
+                        radius = radius,
+                        center = center,
+                    )
+                    val label = textMeasurer.measure("${n + 1}", badgeText)
+                    drawText(label, topLeft = center - Offset(label.size.width / 2f, label.size.height / 2f))
+                }
+                val rect = selectedCell?.let { rects.getOrNull(it) }
                 if (rect != null) {
                     drawRect(
                         color = outline,
@@ -310,6 +352,59 @@ private fun CellControls(
     if (cell.fit == CellFit.FILL) {
         AdjustmentSlider("Zoom", cell.zoom, 1f, 3f) { onChange(cell.copy(zoom = it)) }
     }
+}
+
+/** Indices of the cells holding video clips, in cell order: clip 1, clip 2, … */
+private fun videoCells(collage: Collage): List<Int> = collage.cells.indices.filter { collage.cells[it].isVideo }
+
+/** What shorter clips do, and which clip the sound comes from. */
+@Composable
+private fun VideoOptions(collage: Collage, onChange: (Collage) -> Unit) {
+    Text("Video", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+    Text("When a shorter clip ends", style = MaterialTheme.typography.labelMedium)
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+    ) {
+        ShortClips.entries.forEachIndexed { i, mode ->
+            SegmentedButton(
+                selected = collage.shortClips == mode,
+                onClick = { onChange(collage.copy(shortClips = mode)) },
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = ShortClips.entries.size),
+                label = { Text(if (mode == ShortClips.FREEZE) "Freeze last frame" else "Loop") },
+            )
+        }
+    }
+    Text("Sound", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 10.dp))
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = collage.soundCell == null,
+            onClick = { onChange(collage.copy(soundCell = null)) },
+            label = { Text("Off") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.VolumeOff, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        )
+        videoCells(collage).forEachIndexed { n, cellIndex ->
+            FilterChip(
+                selected = collage.soundCell == cellIndex,
+                onClick = { onChange(collage.copy(soundCell = cellIndex)) },
+                label = { Text("Clip ${n + 1}") },
+                leadingIcon = if (collage.soundCell == cellIndex) {
+                    { Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+            )
+        }
+    }
+    Text(
+        "The numbers on the preview show which clip is which.",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** Small diagrams of the layouts available for [count] photos. */

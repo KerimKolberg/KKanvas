@@ -2,11 +2,11 @@ package com.squareify.app.processing
 
 import android.graphics.Bitmap
 import android.media.Image
-import kotlin.math.roundToInt
 
 /**
  * Writes an ARGB bitmap into a YUV 4:2:0 [Image] (the video encoder's input buffer),
  * honouring each plane's row and pixel stride so both planar and semi-planar layouts work.
+ * Runs once per video frame, so it works a row at a time in integer maths.
  */
 object YuvImageWriter {
 
@@ -17,103 +17,80 @@ object YuvImageWriter {
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
         val planes = image.planes
-        val yPlane = planes[0]
-        val uPlane = planes[1]
-        val vPlane = planes[2]
-
-        writeYPlane(pixels, width, height, yPlane)
-        writeChromaPlane(pixels, width, height, uPlane, isU = true)
-        writeChromaPlane(pixels, width, height, vPlane, isU = false)
+        writeLuma(pixels, width, height, planes[0])
+        writeChroma(pixels, width, height, planes[1], isU = true)
+        writeChroma(pixels, width, height, planes[2], isU = false)
     }
 
-    private fun writeYPlane(pixels: IntArray, width: Int, height: Int, plane: Image.Plane) {
+    private fun writeLuma(pixels: IntArray, width: Int, height: Int, plane: Image.Plane) {
         val buffer = plane.buffer
         val rowStride = plane.rowStride
         val pixelStride = plane.pixelStride
-        val row = ByteArray(rowStride)
-
+        val rowLength = (width - 1) * pixelStride + 1
+        val row = ByteArray(rowLength)
         for (y in 0 until height) {
-            var rowPos = 0
-            for (x in 0 until width) {
-                val p = pixels[y * width + x]
-                val yVal = rgbToY(p)
-                if (pixelStride == 1) {
-                    row[x] = yVal
-                } else {
-                    row[rowPos] = yVal
-                    rowPos += pixelStride
-                }
+            val start = y * rowStride
+            if (pixelStride != 1) {
+                // Keep the bytes between our samples; they may belong to another plane.
+                buffer.position(start)
+                buffer.get(row, 0, rowLength)
             }
-            buffer.position(y * rowStride)
-            buffer.put(row, 0, if (pixelStride == 1) width else (width - 1) * pixelStride + 1)
+            var i = y * width
+            var pos = 0
+            for (x in 0 until width) {
+                val p = pixels[i++]
+                row[pos] = luma((p shr 16) and 0xFF, (p shr 8) and 0xFF, p and 0xFF).toByte()
+                pos += pixelStride
+            }
+            buffer.position(start)
+            buffer.put(row, 0, rowLength)
         }
     }
 
-    private fun writeChromaPlane(
-        pixels: IntArray,
-        width: Int,
-        height: Int,
-        plane: Image.Plane,
-        isU: Boolean,
-    ) {
+    private fun writeChroma(pixels: IntArray, width: Int, height: Int, plane: Image.Plane, isU: Boolean) {
         val buffer = plane.buffer
         val rowStride = plane.rowStride
         val pixelStride = plane.pixelStride
-        val chromaHeight = height / 2
         val chromaWidth = width / 2
-
-        if (pixelStride == 1) {
-            // Planar: each chroma row is contiguous.
-            val row = ByteArray(rowStride)
-            for (cy in 0 until chromaHeight) {
-                val srcY = (cy * 2).coerceAtMost(height - 1)
-                for (cx in 0 until chromaWidth) {
-                    val srcX = (cx * 2).coerceAtMost(width - 1)
-                    val p = pixels[srcY * width + srcX]
-                    row[cx] = if (isU) rgbToU(p) else rgbToV(p)
-                }
-                buffer.position(cy * rowStride)
-                buffer.put(row, 0, chromaWidth)
-            }
-            return
-        }
-
-        // Semi-planar: U and V are interleaved, so write each sample at its absolute offset.
+        val chromaHeight = height / 2
+        val rowLength = (chromaWidth - 1) * pixelStride + 1
+        val row = ByteArray(rowLength)
         for (cy in 0 until chromaHeight) {
-            val srcY = (cy * 2).coerceAtMost(height - 1)
-            val rowStart = cy * rowStride
-            for (cx in 0 until chromaWidth) {
-                val srcX = (cx * 2).coerceAtMost(width - 1)
-                val p = pixels[srcY * width + srcX]
-                val value = if (isU) rgbToU(p) else rgbToV(p)
-                buffer.put(rowStart + cx * pixelStride, value)
+            val start = cy * rowStride
+            if (pixelStride != 1) {
+                // Semi-planar: U and V are interleaved, so keep the other plane's bytes in between.
+                buffer.position(start)
+                buffer.get(row, 0, rowLength)
             }
+            val top = cy * 2 * width
+            val bottom = top + width
+            var pos = 0
+            for (cx in 0 until chromaWidth) {
+                val x = cx * 2
+                // Each chroma sample covers a 2 x 2 block: use its average colour.
+                val a = pixels[top + x]
+                val b = pixels[top + x + 1]
+                val c = pixels[bottom + x]
+                val d = pixels[bottom + x + 1]
+                val red = (((a shr 16) and 0xFF) + ((b shr 16) and 0xFF) + ((c shr 16) and 0xFF) + ((d shr 16) and 0xFF) + 2) shr 2
+                val green = (((a shr 8) and 0xFF) + ((b shr 8) and 0xFF) + ((c shr 8) and 0xFF) + ((d shr 8) and 0xFF) + 2) shr 2
+                val blue = ((a and 0xFF) + (b and 0xFF) + (c and 0xFF) + (d and 0xFF) + 2) shr 2
+                row[pos] = (if (isU) chromaU(red, green, blue) else chromaV(red, green, blue)).toByte()
+                pos += pixelStride
+            }
+            buffer.position(start)
+            buffer.put(row, 0, rowLength)
         }
     }
 
-    // BT.601 full-range RGB -> YUV.
+    // RGB -> BT.709 limited-range YUV (black = 16, white = 235), in 1/256 steps. This is what
+    // Mp4Writer declares to the encoder; full-range values read as limited crush the shadows.
 
-    private fun rgbToY(argb: Int): Byte {
-        val r = (argb shr 16) and 0xFF
-        val g = (argb shr 8) and 0xFF
-        val b = argb and 0xFF
-        val y = 0.299 * r + 0.587 * g + 0.114 * b
-        return y.roundToInt().coerceIn(0, 255).toByte()
-    }
+    private fun luma(r: Int, g: Int, b: Int): Int = clamp(((47 * r + 157 * g + 16 * b + 128) shr 8) + 16)
 
-    private fun rgbToU(argb: Int): Byte {
-        val r = (argb shr 16) and 0xFF
-        val g = (argb shr 8) and 0xFF
-        val b = argb and 0xFF
-        val u = -0.169 * r - 0.331 * g + 0.5 * b + 128
-        return u.roundToInt().coerceIn(0, 255).toByte()
-    }
+    private fun chromaU(r: Int, g: Int, b: Int): Int = clamp(((-26 * r - 86 * g + 112 * b + 128) shr 8) + 128)
 
-    private fun rgbToV(argb: Int): Byte {
-        val r = (argb shr 16) and 0xFF
-        val g = (argb shr 8) and 0xFF
-        val b = argb and 0xFF
-        val v = 0.5 * r - 0.419 * g - 0.081 * b + 128
-        return v.roundToInt().coerceIn(0, 255).toByte()
-    }
+    private fun chromaV(r: Int, g: Int, b: Int): Int = clamp(((112 * r - 102 * g - 10 * b + 128) shr 8) + 128)
+
+    private fun clamp(value: Int): Int = if (value < 0) 0 else if (value > 255) 255 else value
 }

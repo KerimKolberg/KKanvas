@@ -12,22 +12,23 @@
 - Selection mode (long-press): trash originals / share / remove the selection, make a collage.
 - Photo collages: 13 layouts for 2-9 photos, Fill/Fit, zoom, drag to pan, reorder, spacing;
   backgrounds, border (margin, rounded cells, shadow) and adjustments apply. Saved 2160 px wide.
+- Video collages: photos and clips mixed; all clips play at once for the longest clip's length,
+  shorter ones freeze or loop; sound from one chosen clip or off. 1080 px wide, 30 fps, rendered
+  in the background right after "Create collage".
+- Video rendering ~3x faster (encoder no longer waits per frame, faster RGB→YUV), and video
+  colours fixed: shadows were crushed and highlights clipped (full-range values read as
+  video range). On-device tests for sound, colours and collage timing.
 
 ## Next
-1. **Video collages** (photo collages are done; see below for the design)
-   - Pick 2-9 items via selection mode, then "Make collage".
-   - Layouts: 2 side by side, 2 stacked, 1 big + 2, 2x2, 3x2, 3x3; any of the four formats.
-   - Per cell: Fill (crop) or Fit (padding); tap a cell to pan/zoom its crop; drag to swap cells.
-   - Spacing between cells, rounded cells, existing backgrounds and adjustments.
-   - Videos: all play at once; length = longest clip, shorter ones hold their last frame or
-     loop (user's choice); sound from one chosen clip or muted. Needs several decoders at once.
-3. **Filters / presets**: one-tap looks (warm, film, B&W, faded) and saving your own.
-4. **Panorama carousel**: split one wide photo into 2-10 seamless slides.
-5. **Text**: captions/titles with a few fonts.
-6. **Frame styles**: Polaroid, film strip, thin white border.
-7. **Smart crop**: keep faces in view when cropping (collages).
-8. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
-9. Watermark (kk logo).
+1. **Filters / presets**: one-tap looks (warm, film, B&W, faded) and saving your own.
+2. **Panorama carousel**: split one wide photo into 2-10 seamless slides.
+3. **Text**: captions/titles with a few fonts.
+4. **Frame styles**: Polaroid, film strip, thin white border.
+5. **Smart crop**: keep faces in view when cropping (collages).
+6. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
+7. Watermark (kk logo).
+8. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+   (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.
 

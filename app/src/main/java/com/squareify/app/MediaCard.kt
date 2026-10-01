@@ -85,7 +85,7 @@ fun MediaCard(
         }
 
         val label = when {
-            item.collage != null -> "Collage"
+            item.collage != null -> if (item.isVideo) "Video collage" else "Collage"
             item.isVideo -> "Video"
             else -> null
         }

@@ -3,21 +3,20 @@ package com.squareify.app.processing
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaCodec
-import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
-import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import android.view.Surface
 import com.squareify.app.FrameSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -27,10 +26,9 @@ import kotlin.math.roundToInt
  */
 object VideoProcessor {
     private const val TAG = "VideoProcessor"
-    private const val TIMEOUT_US = 10_000L
-    private const val I_FRAME_INTERVAL = 2
+    internal const val TIMEOUT_US = 10_000L
     /** How long to wait for a rendered frame before repeating the previous one. */
-    private const val FRAME_TIMEOUT_MS = 2_500L
+    internal const val FRAME_TIMEOUT_MS = 2_500L
 
     data class Probe(
         val durationUs: Long,
@@ -40,7 +38,13 @@ object VideoProcessor {
         val rotationDegrees: Int,
         val videoTrackIndex: Int,
         val audioTrackIndex: Int,
-    )
+    ) {
+        private val rotated get() = rotationDegrees == 90 || rotationDegrees == 270
+
+        /** Size as shown, i.e. after rotation. */
+        val displayWidth: Int get() = if (rotated) height else width
+        val displayHeight: Int get() = if (rotated) width else height
+    }
 
     /**
      * [onProgress] runs from 0 to 0.9 while encoding, 0.92 after audio, 1 when finished.
@@ -54,153 +58,125 @@ object VideoProcessor {
         onProgress: (Float) -> Unit,
     ): Boolean = withContext(Dispatchers.Default) {
         val probe = probeSource(context, sourceUri)
-        val rotated = probe.rotationDegrees == 90 || probe.rotationDegrees == 270
-        val displayWidth = if (rotated) probe.height else probe.width
-        val displayHeight = if (rotated) probe.width else probe.height
         val (canvasWidth, canvasHeight) =
-            PhotoProcessor.canvasSize(displayWidth, displayHeight, settings)
+            PhotoProcessor.canvasSize(probe.displayWidth, probe.displayHeight, settings)
         val fps = probe.fps.coerceIn(1, 60)
+        Log.d(TAG, "probe=$probe canvas=${canvasWidth}x$canvasHeight fps=$fps")
 
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        Log.d(TAG, "selected codec=${encoder.name}")
-        val (width, height) = fitToEncoder(encoder, canvasWidth, canvasHeight)
-        Log.d(TAG, "probe=$probe canvas=${canvasWidth}x$canvasHeight output=${width}x$height fps=$fps")
-        configureEncoder(encoder, width, height, fps)
-        encoder.start()
-        val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        var muxerVideoTrack = -1
-        var muxerAudioTrack = -1
-        var muxerStarted = false
-        val bufferInfo = MediaCodec.BufferInfo()
-
-        var audioFormat: MediaFormat? = null
-        if (probe.audioTrackIndex >= 0) {
-            val probeExtractor = MediaExtractor()
-            probeExtractor.setDataSource(context, sourceUri, null)
-            audioFormat = probeExtractor.getTrackFormat(probe.audioTrackIndex)
-            probeExtractor.release()
-        }
-
-        var videoSamplesWritten = 0
-        // YUV 4:2:0: a full-size luma plane plus two quarter-size chroma planes.
-        val frameByteSize = width * height * 3 / 2
-
-        // The muxer can only start once every track is added; the video track's format
-        // is only known after the encoder reports INFO_OUTPUT_FORMAT_CHANGED.
-        fun maybeStartMuxer() {
-            if (muxerStarted || muxerVideoTrack < 0) return
-            val format = audioFormat
-            if (format != null && muxerAudioTrack < 0) {
-                muxerAudioTrack = muxer.addTrack(format)
-            }
-            muxer.start()
-            muxerStarted = true
-        }
-
-        fun drainEncoder(endOfStream: Boolean) {
-            if (endOfStream) {
-                // Only valid for Surface input; ours is Image input, so this normally throws.
-                try {
-                    encoder.signalEndOfInputStream()
-                } catch (_: Exception) {
-                }
-            }
-            while (true) {
-                val outIndex = encoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
-                if (outIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    if (!endOfStream) return
-                } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    Log.d(TAG, "video INFO_OUTPUT_FORMAT_CHANGED: ${encoder.outputFormat}")
-                    muxerVideoTrack = muxer.addTrack(encoder.outputFormat)
-                    maybeStartMuxer()
-                } else if (outIndex >= 0) {
-                    val encodedData = encoder.getOutputBuffer(outIndex)
-                    // Codec config (SPS/PPS) already reached the muxer via the output format.
-                    val isConfig = bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
-                    if (bufferInfo.size > 0 && !isConfig && encodedData != null && muxerStarted) {
-                        encodedData.position(bufferInfo.offset)
-                        encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                        muxer.writeSampleData(muxerVideoTrack, encodedData, bufferInfo)
-                        videoSamplesWritten++
-                    }
-                    encoder.releaseOutputBuffer(outIndex, false)
-                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return
-                }
-            }
-        }
-
-        fun encodeFrame(bitmap: Bitmap, presentationTimeUs: Long) {
-            val framed = PhotoProcessor.frame(bitmap, settings, width, height)
-            var inputIndex = -1
-            while (inputIndex < 0) {
-                inputIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
-                if (inputIndex < 0) drainEncoder(false)
-            }
-            encoder.getInputImage(inputIndex)?.let { YuvImageWriter.writeBitmapToImage(framed, it) }
-            encoder.queueInputBuffer(inputIndex, 0, frameByteSize, presentationTimeUs, 0)
-            if (framed !== bitmap) framed.recycle()
-            drainEncoder(false)
-        }
-
+        val writer = Mp4Writer(outputFile, canvasWidth, canvasHeight, fps, audioFormat(context, sourceUri, probe))
         try {
             decodeSequentially(
                 context,
                 sourceUri,
                 probe.videoTrackIndex,
-                displayWidth,
-                displayHeight,
+                probe.displayWidth,
+                probe.displayHeight,
             ) { bitmap, ptsUs ->
-                encodeFrame(bitmap, ptsUs)
+                val framed = PhotoProcessor.frame(bitmap, settings, writer.width, writer.height)
+                writer.encode(framed, ptsUs)
+                if (framed !== bitmap) framed.recycle()
                 if (probe.durationUs > 0) {
                     onProgress(min(0.9f, ptsUs.toFloat() / probe.durationUs * 0.9f))
                 }
             }
-
-            // With Image input, end-of-stream has to be queued as an empty input buffer.
-            var eosIndex = -1
-            var eosAttempts = 0
-            while (eosIndex < 0 && eosAttempts < 200) {
-                eosIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
-                if (eosIndex < 0) {
-                    drainEncoder(false)
-                    eosAttempts++
-                }
-            }
-            if (eosIndex >= 0) {
-                encoder.queueInputBuffer(eosIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-            } else {
-                Log.e(TAG, "could not obtain an input buffer to submit EOS after $eosAttempts attempts")
-            }
-            drainEncoder(true)
-            Log.d(
-                TAG,
-                "encode loop done: videoSamplesWritten=$videoSamplesWritten " +
-                    "muxerVideoTrack=$muxerVideoTrack muxerStarted=$muxerStarted"
-            )
+            writer.finishVideo()
+            onProgress(0.92f)
+            val soundDropped = copySound(context, sourceUri, probe, writer)
+            writer.close()
+            onProgress(1f)
+            soundDropped
         } finally {
-            encoder.stop()
-            encoder.release()
+            writer.release()
         }
+    }
 
-        onProgress(0.92f)
-        var soundDropped = false
-        if (probe.audioTrackIndex >= 0) {
-            if (muxerAudioTrack >= 0) {
-                try {
-                    remuxAudio(context, sourceUri, probe.audioTrackIndex, muxer, muxerAudioTrack)
+    /** The source's audio track format, or null if it has no sound. */
+    internal fun audioFormat(context: Context, uri: Uri, probe: Probe): MediaFormat? {
+        if (probe.audioTrackIndex < 0) return null
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(context, uri, null)
+            extractor.getTrackFormat(probe.audioTrackIndex)
+        } finally {
+            extractor.release()
+        }
+    }
+
+    /**
+     * Copies the source's sound into [writer], cut off at [endUs]. With [loopLengthUs] it starts
+     * over every [loopLengthUs] until [endUs], to stay in step with a looping clip.
+     * Returns true if the source had sound but it couldn't be copied.
+     */
+    internal fun copySound(
+        context: Context,
+        uri: Uri,
+        probe: Probe,
+        writer: Mp4Writer,
+        endUs: Long = Long.MAX_VALUE,
+        loopLengthUs: Long = 0L,
+    ): Boolean {
+        if (probe.audioTrackIndex < 0) return false
+        if (writer.audioTrack < 0) {
+            Log.w(TAG, "audio track was never added to the muxer, output will have no sound")
+            return true
+        }
+        return try {
+            remuxAudio(context, uri, probe.audioTrackIndex, writer, endUs, loopLengthUs)
+            false
+        } catch (e: Exception) {
+            Log.w(TAG, "audio remux failed, output will have no sound", e)
+            true
+        }
+    }
+
+    /**
+     * A decoder for [format], configured to render onto [surface]. Tries the phone's decoders in
+     * its preferred order (hardware first): with several clips at once (collages) the hardware
+     * decoder can run out of room, and a software one then takes over.
+     */
+    internal fun openDecoder(format: MediaFormat, surface: Surface): MediaCodec {
+        val mime = format.getString(MediaFormat.KEY_MIME)
+            ?: throw IllegalStateException("no mime for video track")
+        try {
+            // Ask the decoder to tone-map HDR sources to SDR.
+            format.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not request SDR color transfer ($e)")
+        }
+        // Dolby Vision falls back to its HEVC base layer if nothing decodes it.
+        val mimes = if (mime == MediaFormat.MIMETYPE_VIDEO_DOLBY_VISION) {
+            listOf(mime, MediaFormat.MIMETYPE_VIDEO_HEVC)
+        } else {
+            listOf(mime)
+        }
+        val codecInfos = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+        var lastError: Exception? = null
+        for (type in mimes) {
+            val names = codecInfos
+                .filter { info -> !info.isEncoder && info.supportedTypes.any { it.equals(type, ignoreCase = true) } }
+                .map { it.name }
+                .filterNot { it.endsWith(".secure") }
+            for (name in names) {
+                val codec = try {
+                    MediaCodec.createByCodecName(name)
                 } catch (e: Exception) {
-                    Log.w(TAG, "audio remux failed, output will have no sound", e)
-                    soundDropped = true
+                    lastError = e
+                    continue
                 }
-            } else {
-                Log.w(TAG, "audio track was never added to the muxer, output will have no sound")
-                soundDropped = true
+                try {
+                    format.setString(MediaFormat.KEY_MIME, type)
+                    // The format carries the rotation; the decoder applies it to what it renders.
+                    codec.configure(format, surface, null, 0)
+                    Log.d(TAG, "decoder $name for $type")
+                    return codec
+                } catch (e: Exception) {
+                    Log.w(TAG, "decoder $name refused $type ($e)")
+                    lastError = e
+                    codec.release()
+                }
             }
         }
-        muxer.stop()
-        muxer.release()
-        onProgress(1f)
-        soundDropped
+        throw lastError ?: IllegalStateException("no decoder for $mime")
     }
 
     private fun decodeSequentially(
@@ -215,36 +191,20 @@ object VideoProcessor {
         extractor.setDataSource(context, sourceUri, null)
         extractor.selectTrack(videoTrackIndex)
         val format = extractor.getTrackFormat(videoTrackIndex)
-        val mime = format.getString(MediaFormat.KEY_MIME)
-            ?: throw IllegalStateException("no mime for video track")
 
-        val decoder = try {
-            MediaCodec.createDecoderByType(mime)
-        } catch (e: Exception) {
-            if (mime != MediaFormat.MIMETYPE_VIDEO_DOLBY_VISION) throw e
-            Log.w(TAG, "no decoder for $mime ($e) — falling back to video/hevc base layer")
-            format.setString(MediaFormat.KEY_MIME, MediaFormat.MIMETYPE_VIDEO_HEVC)
-            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
-        }
-        try {
-            // Ask the decoder to tone-map HDR sources to SDR.
-            format.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
-        } catch (e: Exception) {
-            Log.w(TAG, "could not request SDR color transfer ($e)")
-        }
         // Frame-available callbacks need their own thread; the GL work happens on this one.
         val frameThread = HandlerThread("VideoProcessor-Frames")
         frameThread.start()
         val reader = GlFrameReader(displayWidth, displayHeight, Handler(frameThread.looper))
 
         val bufferInfo = MediaCodec.BufferInfo()
+        var decoder: MediaCodec? = null
         var lastGoodBitmap: Bitmap? = null
         var inputDone = false
         var outputDone = false
 
         try {
-            // The format carries the rotation; the decoder applies it to what it renders.
-            decoder.configure(format, reader.surface, null, 0)
+            decoder = openDecoder(format, reader.surface)
             decoder.start()
             while (!outputDone) {
                 if (!inputDone) {
@@ -295,12 +255,14 @@ object VideoProcessor {
             }
         } finally {
             lastGoodBitmap?.recycle()
-            try {
-                decoder.stop()
-            } catch (_: IllegalStateException) {
-                // Never started (configure failed).
+            if (decoder != null) {
+                try {
+                    decoder.stop()
+                } catch (_: IllegalStateException) {
+                    // Never started.
+                }
+                decoder.release()
             }
-            decoder.release()
             reader.release()
             extractor.release()
             frameThread.quitSafely()
@@ -311,32 +273,44 @@ object VideoProcessor {
         context: Context,
         sourceUri: Uri,
         audioTrackIndex: Int,
-        muxer: MediaMuxer,
-        muxerAudioTrack: Int,
+        writer: Mp4Writer,
+        endUs: Long,
+        loopLengthUs: Long,
     ) {
         val extractor = MediaExtractor()
         extractor.setDataSource(context, sourceUri, null)
         extractor.selectTrack(audioTrackIndex)
         val buffer = ByteBuffer.allocate(1024 * 1024)
         val info = MediaCodec.BufferInfo()
-        while (true) {
-            val size = extractor.readSampleData(buffer, 0)
-            if (size < 0) break
-            info.offset = 0
-            info.size = size
-            info.presentationTimeUs = extractor.sampleTime
-            info.flags = if (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
-                MediaCodec.BUFFER_FLAG_KEY_FRAME
-            } else {
-                0
+        var offsetUs = 0L
+        var lastWrittenUs = Long.MIN_VALUE
+        try {
+            while (true) {
+                val size = extractor.readSampleData(buffer, 0)
+                if (size < 0) {
+                    // The sound ran out: a looping clip starts over if the video goes on.
+                    if (loopLengthUs <= 0 || offsetUs + loopLengthUs >= endUs) break
+                    offsetUs += loopLengthUs
+                    extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+                    continue
+                }
+                val ptsUs = extractor.sampleTime + offsetUs
+                if (ptsUs >= endUs) break
+                // A pass's sound can run a little longer than its picture; the next pass cuts it off.
+                if (ptsUs > lastWrittenUs) {
+                    val keyFrame = extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0
+                    info.set(0, size, ptsUs, if (keyFrame) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
+                    writer.writeAudio(buffer, info)
+                    lastWrittenUs = ptsUs
+                }
+                extractor.advance()
             }
-            muxer.writeSampleData(muxerAudioTrack, buffer, info)
-            extractor.advance()
+        } finally {
+            extractor.release()
         }
-        extractor.release()
     }
 
-    private fun probeSource(context: Context, uri: Uri): Probe {
+    internal fun probeSource(context: Context, uri: Uri): Probe {
         val extractor = MediaExtractor()
         extractor.setDataSource(context, uri, null)
 
@@ -385,48 +359,5 @@ object VideoProcessor {
         }
 
         return Probe(durationUs, fps, width, height, rotation, videoTrack, audioTrack)
-    }
-
-    /**
-     * Shrinks [width] x [height] (keeping its aspect ratio) until [encoder] supports it,
-     * e.g. a 4K landscape clip padded to 9:16 is far taller than any phone encoder allows.
-     */
-    private fun fitToEncoder(encoder: MediaCodec, width: Int, height: Int): Pair<Int, Int> {
-        val caps = encoder.codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
-            ?: return width / 2 * 2 to height / 2 * 2
-        // YUV 4:2:0 needs even dimensions; some encoders require coarser alignment.
-        val alignW = max(2, caps.widthAlignment)
-        val alignH = max(2, caps.heightAlignment)
-        var scale = 1.0
-        while (scale > 0.05) {
-            val w = (width * scale).toInt() / alignW * alignW
-            val h = (height * scale).toInt() / alignH * alignH
-            if (w > 0 && h > 0 && caps.isSizeSupported(w, h)) return w to h
-            scale *= 0.95
-        }
-        return width / alignW * alignW to height / alignH * alignH
-    }
-
-    private fun configureEncoder(codec: MediaCodec, width: Int, height: Int, fps: Int) {
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
-        format.setInteger(
-            MediaFormat.KEY_COLOR_FORMAT,
-            MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
-        )
-        val targetBitrate = (width.toLong() * height * fps * 0.09).toInt().coerceIn(3_000_000, 80_000_000)
-        format.setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, fps)
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
-
-        try {
-            format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileMain)
-            Log.d(TAG, "creating encoder with format=$format")
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        } catch (e: Exception) {
-            Log.w(TAG, "Main profile configure failed ($e), retrying with encoder default profile")
-            format.removeKey(MediaFormat.KEY_PROFILE)
-            Log.d(TAG, "creating encoder with format=$format")
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        }
     }
 }

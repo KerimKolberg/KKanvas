@@ -1,14 +1,8 @@
 package com.squareify.app.processing
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.media.MediaCodec
-import android.media.MediaCodecInfo
-import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
-import android.media.MediaMuxer
 import android.net.Uri
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,6 +12,8 @@ import com.squareify.app.FrameFormat
 import com.squareify.app.FrameSettings
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,10 +42,26 @@ class VideoProcessorTest {
         settings = FrameSettings(format = FrameFormat.STORY, bgColor = Color.BLACK, border = Border(margin = 0.4f)),
     )
 
+    /** The sound is copied over whole; it went missing in an early version of the app. */
+    @Test
+    fun soundIsKept() = runBlocking {
+        val source = File(context.cacheDir, "test_source_sound.mp4")
+        val output = File(context.cacheDir, "test_output_sound.mp4")
+        TestVideos.create(source, FRAMES, withSound = true)
+
+        val soundDropped = VideoProcessor.render(context, Uri.fromFile(source), FrameSettings(), output) { }
+
+        assertFalse("render reported dropped sound", soundDropped)
+        val sourceSound = TestVideos.trackDurationUs(source, "audio/")!!
+        val outputSound = TestVideos.trackDurationUs(output, "audio/")
+        assertNotNull("output has no sound track", outputSound)
+        assertEquals("sound length", sourceSound.toDouble(), outputSound!!.toDouble(), 50_000.0)
+    }
+
     private fun checkSmoothRender(rotation: Int, settings: FrameSettings) = runBlocking {
         val source = File(context.cacheDir, "test_source.mp4")
         val output = File(context.cacheDir, "test_output.mp4")
-        createTestVideo(source, rotation)
+        TestVideos.create(source, FRAMES, rotation)
 
         VideoProcessor.render(context, Uri.fromFile(source), settings, output) { }
 
@@ -121,72 +133,8 @@ class VideoProcessorTest {
         return FrameInfo(sumX / n.toDouble(), sumY / n.toDouble(), n, Box(left, top, right, bottom))
     }
 
-    /** 1920x1080 AVC; with a 90° rotation hint it looks like a portrait phone recording. */
-    private fun createTestVideo(file: File, rotation: Int) {
-        val width = 1920
-        val height = 1080
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 10_000_000)
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-        val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        encoder.start()
-        val muxer = MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        muxer.setOrientationHint(rotation)
-
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint()
-        paint.color = Color.WHITE
-        val info = MediaCodec.BufferInfo()
-        var track = -1
-        var frame = 0
-        var inputDone = false
-        var outputDone = false
-        while (!outputDone) {
-            if (!inputDone) {
-                val index = encoder.dequeueInputBuffer(10_000)
-                if (index >= 0) {
-                    if (frame == FRAMES) {
-                        encoder.queueInputBuffer(index, 0, 0, frame * FRAME_US, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        inputDone = true
-                    } else {
-                        canvas.drawColor(Color.rgb(64, 64, 64))
-                        val x = 100f + frame * STEP
-                        canvas.drawRect(x, 480f, x + 120f, 600f, paint)
-                        YuvImageWriter.writeBitmapToImage(bitmap, encoder.getInputImage(index)!!)
-                        encoder.queueInputBuffer(index, 0, width * height * 3 / 2, frame * FRAME_US, 0)
-                        frame++
-                    }
-                }
-            }
-            val out = encoder.dequeueOutputBuffer(info, 10_000)
-            if (out == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                track = muxer.addTrack(encoder.outputFormat)
-                muxer.start()
-            } else if (out >= 0) {
-                val data = encoder.getOutputBuffer(out)!!
-                if (info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
-                    data.position(info.offset)
-                    data.limit(info.offset + info.size)
-                    muxer.writeSampleData(track, data, info)
-                }
-                encoder.releaseOutputBuffer(out, false)
-                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
-            }
-        }
-        encoder.stop()
-        encoder.release()
-        muxer.stop()
-        muxer.release()
-    }
-
     private companion object {
         const val TAG = "VideoProcessorTest"
         const val FRAMES = 60
-        const val STEP = 20f
-        const val FRAME_US = 33_333L
     }
 }

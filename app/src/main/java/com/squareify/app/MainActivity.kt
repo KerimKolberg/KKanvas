@@ -225,16 +225,14 @@ fun SquarifyApp(viewModel: MainViewModel) {
                     onRemove = viewModel::removeSelected,
                     collageEnabled = selectedItems.size in 2..CollageLayout.MAX_PHOTOS,
                     onCollage = {
-                        when {
-                            selectedItems.any { it.isVideo } -> Toast.makeText(
-                                context, "Video collages are coming next. Select only photos for now.", Toast.LENGTH_LONG,
-                            ).show()
-                            selectedItems.any { it.collage != null } -> Toast.makeText(
-                                context, "A collage can't contain another collage.", Toast.LENGTH_LONG,
-                            ).show()
-                            else -> newCollage = Collage(
+                        if (selectedItems.any { it.collage != null }) {
+                            Toast.makeText(context, "A collage can't contain another collage.", Toast.LENGTH_LONG).show()
+                        } else {
+                            newCollage = Collage(
                                 layout = CollageLayout.forCount(selectedItems.size).first(),
-                                cells = selectedItems.map { CollageCell(it.sourceUri, it.displayName, it.preview) },
+                                cells = selectedItems.map {
+                                    CollageCell(it.sourceUri, it.displayName, it.preview, isVideo = it.isVideo)
+                                },
                             )
                         }
                     },
