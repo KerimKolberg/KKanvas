@@ -12,7 +12,12 @@ and grain adjustments.
   original audio. If the audio can't be copied, the card shows a "No sound" badge.
 - Media can be shared into the app from the gallery, and saved results shared out
   (e.g. to Instagram) from the green button on each card or "Share all" in the top bar.
-- The format, background and slider settings are remembered between launches.
+- Backgrounds: solid colour (presets, custom picker, colours from the photo, eyedropper),
+  two-colour gradient, or blurred with adjustable strength. Border: margin, rounded
+  corners, shadow.
+- Live preview while editing, full-screen preview on tap; hold either to see the original.
+- Saving again after an edit overwrites the earlier file instead of adding a copy.
+- The settings for new media are remembered between launches; the grid survives rotation.
 
 Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 
@@ -20,13 +25,18 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 
 | File | What it does |
 | --- | --- |
-| `MainActivity.kt` | Compose UI: settings panel, media grid, edit sheet, sharing, gallery saving |
-| `MediaItem.kt` | `MediaItem`, `FrameSettings`, `FrameFormat`, `Adjustments`, `PaddingStyle` |
+| `MainActivity.kt` | Activity, main screen, settings panel, share-in/share-out |
+| `MainViewModel.kt` | The grid and its actions: adding, saving photos, rendering videos, edits |
+| `MediaCard.kt`, `EditSheet.kt`, `PreviewDialog.kt` | Grid card, edit sheet with live preview, full-screen preview |
+| `SettingsControls.kt` | Format, background, border and adjustment controls, colour picker |
+| `MediaItem.kt` | `MediaItem`, `FrameSettings`, `FrameFormat`, `Border`, `Adjustments` |
+| `MediaLoading.kt` | Loading photos/video frames, thumbnails, output file names |
+| `GallerySaver.kt` | Saves to Pictures/ and Movies/Squareify, overwriting earlier saves |
 | `SettingsStore.kt` | Remembers the settings for new media |
-| `RenderService.kt` | Foreground service that renders queued videos |
-| `RenderStateHolder.kt` | Shares render progress between the service and the UI |
-| `processing/PhotoProcessor.kt` | Padding to a format, blur background, colour/sharpen/grain |
+| `RenderService.kt`, `RenderStateHolder.kt` | Background video rendering and its progress |
+| `processing/PhotoProcessor.kt` | Padding to a format, backgrounds, border, colour/sharpen/grain |
 | `processing/VideoProcessor.kt` | MediaCodec decode, pad each frame, H.264 encode, audio remux |
+| `processing/ColorExtractor.kt` | Suggested background colours from a photo |
 | `processing/StackBlur.kt` | Fast blur used for the blurred background |
 | `processing/YuvImageWriter.kt` | Writes ARGB frames into the encoder's YUV input |
 
