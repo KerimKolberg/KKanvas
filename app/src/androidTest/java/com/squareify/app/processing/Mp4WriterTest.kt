@@ -8,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,7 +21,12 @@ class Mp4WriterTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
-    fun colorsComeOutAsDrawn() {
+    fun colorsComeOutAsDrawnThroughTheGpu() = checkColors(useGpu = true)
+
+    @Test
+    fun colorsComeOutAsDrawnThroughTheCpu() = checkColors(useGpu = false)
+
+    private fun checkColors(useGpu: Boolean) {
         // Near-black and near-white show range mistakes; the saturated ones show matrix mistakes.
         val colors = listOf(
             Color.rgb(8, 8, 8), Color.rgb(40, 40, 40), Color.rgb(128, 128, 128), Color.rgb(245, 245, 245),
@@ -40,7 +46,8 @@ class Mp4WriterTest {
         }
 
         val file = File(context.cacheDir, "colors.mp4")
-        val writer = Mp4Writer(file, width, height, 30, null)
+        val writer = Mp4Writer(file, width, height, 30, null, useGpu = useGpu)
+        assertEquals("GPU path", useGpu, writer.usesGpu)
         try {
             repeat(15) { writer.encode(frame, it * 33_333L) }
             writer.finishVideo()

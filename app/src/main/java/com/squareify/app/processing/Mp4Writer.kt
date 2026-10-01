@@ -15,8 +15,11 @@ import kotlin.math.max
  * source ([audioFormat] is that track's format). The requested size is shrunk if the phone's
  * encoder can't handle it, so frames must be drawn at [width] x [height].
  *
+ * Frames normally reach the encoder through the GPU ([GlEncoderInput]); if that can't be set up,
+ * or with [useGpu] false, they're converted to YUV on the CPU ([YuvImageWriter]) instead.
+ *
  * Use: [encode] every frame, [finishVideo], write any audio with [writeAudio], [close];
- * [release] in a finally block.
+ * [release] in a finally block. All on one thread (the GPU path owns an EGL context).
  */
 internal class Mp4Writer(
     outputFile: File,
@@ -24,21 +27,46 @@ internal class Mp4Writer(
     requestedHeight: Int,
     fps: Int,
     private val audioFormat: MediaFormat?,
+    useGpu: Boolean = true,
 ) {
     private val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
     private val size = fitToEncoder(encoder, requestedWidth, requestedHeight)
     val width: Int get() = size.first
     val height: Int get() = size.second
 
-    private val muxer: MediaMuxer = try {
+    /** Set when frames go through the GPU. */
+    private val gpuInput: GlEncoderInput? = try {
         Log.d(TAG, "codec=${encoder.name} requested=${requestedWidth}x$requestedHeight output=${width}x$height fps=$fps")
-        configureEncoder(encoder, width, height, fps)
+        val gpu = if (useGpu) setUpGpuInput(fps) else null
+        if (gpu == null) configureEncoder(encoder, width, height, fps, surfaceInput = false)
         encoder.start()
-        MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        gpu
     } catch (e: Exception) {
         encoder.release()
         throw e
     }
+
+    /** True when frames go through the GPU rather than the CPU colour conversion. */
+    val usesGpu: Boolean get() = gpuInput != null
+
+    private val muxer: MediaMuxer = try {
+        MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+    } catch (e: Exception) {
+        gpuInput?.release()
+        encoder.release()
+        throw e
+    }
+
+    /** Configures the encoder for surface input and sets up OpenGL on it; null (encoder reset) if anything fails. */
+    private fun setUpGpuInput(fps: Int): GlEncoderInput? =
+        try {
+            configureEncoder(encoder, width, height, fps, surfaceInput = true)
+            GlEncoderInput(encoder.createInputSurface(), width, height)
+        } catch (e: Exception) {
+            Log.w(TAG, "GPU input unavailable, converting colours on the CPU", e)
+            encoder.reset()
+            null
+        }
 
     private var videoTrack = -1
 
@@ -57,6 +85,14 @@ internal class Mp4Writer(
 
     /** [frame] must be [width] x [height]. */
     fun encode(frame: Bitmap, presentationTimeUs: Long) {
+        val gpu = gpuInput
+        if (gpu != null) {
+            // Make room first: a full encoder would otherwise hold up the frame being handed over.
+            drain(false)
+            gpu.draw(frame, presentationTimeUs)
+            drain(false)
+            return
+        }
         var inputIndex = -1
         while (inputIndex < 0) {
             inputIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
@@ -69,7 +105,19 @@ internal class Mp4Writer(
 
     /** Ends the video track; audio can be written afterwards. */
     fun finishVideo() {
-        // With Image input, end-of-stream has to be queued as an empty input buffer.
+        if (gpuInput != null) {
+            encoder.signalEndOfInputStream()
+        } else {
+            queueEndOfStream()
+        }
+        drain(true)
+        Log.d(TAG, "video done: samples=$videoSamplesWritten track=$videoTrack muxerStarted=$muxerStarted gpu=$usesGpu")
+        releaseEncoder()
+        check(videoSamplesWritten > 0) { "No video frames were rendered" }
+    }
+
+    /** With Image input, end-of-stream has to be queued as an empty input buffer. */
+    private fun queueEndOfStream() {
         var eosIndex = -1
         var eosAttempts = 0
         while (eosIndex < 0 && eosAttempts < 200) {
@@ -84,10 +132,6 @@ internal class Mp4Writer(
         } else {
             Log.e(TAG, "could not obtain an input buffer to submit EOS after $eosAttempts attempts")
         }
-        drain(true)
-        Log.d(TAG, "video done: samples=$videoSamplesWritten track=$videoTrack muxerStarted=$muxerStarted")
-        releaseEncoder()
-        check(videoSamplesWritten > 0) { "No video frames were rendered" }
     }
 
     fun writeAudio(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
@@ -123,6 +167,11 @@ internal class Mp4Writer(
         } catch (_: IllegalStateException) {
         }
         encoder.release()
+        try {
+            gpuInput?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "releasing the GPU input failed", e)
+        }
     }
 
     // The muxer can only start once every track is added; the video track's format
@@ -184,11 +233,15 @@ internal class Mp4Writer(
             return width / alignW * alignW to height / alignH * alignH
         }
 
-        fun configureEncoder(codec: MediaCodec, width: Int, height: Int, fps: Int) {
+        fun configureEncoder(codec: MediaCodec, width: Int, height: Int, fps: Int, surfaceInput: Boolean) {
             val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
             format.setInteger(
                 MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
+                if (surfaceInput) {
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+                } else {
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
+                },
             )
             val targetBitrate = (width.toLong() * height * fps * 0.09).toInt().coerceIn(3_000_000, 80_000_000)
             format.setInteger(MediaFormat.KEY_BIT_RATE, targetBitrate)

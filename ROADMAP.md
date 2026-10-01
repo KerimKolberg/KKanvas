@@ -59,10 +59,12 @@
 - Textures (Adjust tab): paper, dust, light leak, made in code; across all slides on strips.
   Stickers on carousels: tape, heart, star, sparkle, arrow, circle scribble, underline; drawn
   in code, moved / resized / turned like photos, recoloured, duplicated.
+- GPU video encoding: finished frames reach the encoder through OpenGL and its hardware converts
+  colours (CPU fallback kept). Encoding ~8x faster, video collages ~2x faster overall (faster
+  than real time); colours verified exact on both paths.
 
 ## Next
-1. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
-   (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
+(Nothing planned; ideas welcome.)
 
 Not wanted: profile-grid splitter.
 
