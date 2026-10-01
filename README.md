@@ -10,6 +10,8 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
 - Videos are rendered on demand ("Render all" queues every waiting video) by a
   foreground service (`RenderService`) and saved to `Movies/Squareify`, keeping the
   original audio. If the audio can't be copied, the card shows a "No sound" badge.
+  A video's edit sheet trims it, changes its speed (slow-mo to 4x), mutes it or makes it a
+  boomerang.
 - Media can be shared into the app from the gallery, and saved results shared out
   (e.g. to Instagram) from the green button on each card or "Share all" in the top bar.
 - Backgrounds: solid colour (presets, custom picker, colours from the photo, eyedropper),

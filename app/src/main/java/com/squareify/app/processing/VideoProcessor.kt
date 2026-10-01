@@ -2,6 +2,7 @@ package com.squareify.app.processing
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.MediaExtractor
@@ -61,32 +62,90 @@ object VideoProcessor {
         val (canvasWidth, canvasHeight) =
             PhotoProcessor.canvasSize(probe.displayWidth, probe.displayHeight, settings)
         val fps = probe.fps.coerceIn(1, 60)
-        Log.d(TAG, "probe=$probe canvas=${canvasWidth}x$canvasHeight fps=$fps")
+        val edit = settings.video
+        val range = edit.rangeMs(probe.durationUs / 1000)
+        val startUs = range.first * 1000
+        val endUs = range.last * 1000
+        Log.d(TAG, "probe=$probe canvas=${canvasWidth}x$canvasHeight fps=$fps edit=$edit range=$range")
 
-        val writer = Mp4Writer(outputFile, canvasWidth, canvasHeight, fps, audioFormat(context, sourceUri, probe))
+        val audio = if (edit.keepsSound) audioFormat(context, sourceUri, probe) else null
+        val writer = Mp4Writer(outputFile, canvasWidth, canvasHeight, fps, audio)
+        val boomerang = if (edit.boomerang) FrameCache(File(context.cacheDir, "boomerang_${outputFile.nameWithoutExtension}")) else null
+        // Going forward is all the work, unless a boomerang has to come back as well.
+        val forwardShare = if (boomerang != null) 0.6f else 0.9f
+        // Sped up, frames closer together than this are dropped, so the result keeps the clip's frame rate.
+        val minStepUs = 1_000_000L / fps * 3 / 4
         try {
+            var lastOutUs = Long.MIN_VALUE
             decodeSequentially(
                 context,
                 sourceUri,
                 probe.videoTrackIndex,
                 probe.displayWidth,
                 probe.displayHeight,
+                startUs,
+                endUs,
             ) { bitmap, ptsUs ->
-                val framed = PhotoProcessor.frame(bitmap, settings, writer.width, writer.height)
-                writer.encode(framed, ptsUs)
-                if (framed !== bitmap) framed.recycle()
-                if (probe.durationUs > 0) {
-                    onProgress(min(0.9f, ptsUs.toFloat() / probe.durationUs * 0.9f))
+                val outUs = ((ptsUs - startUs) / edit.speed).toLong().coerceAtLeast(0L)
+                if (lastOutUs == Long.MIN_VALUE || outUs - lastOutUs >= minStepUs) {
+                    lastOutUs = outUs
+                    val framed = PhotoProcessor.frame(bitmap, settings, writer.width, writer.height)
+                    writer.encode(framed, outUs)
+                    boomerang?.add(framed, outUs)
+                    if (framed !== bitmap) framed.recycle()
+                }
+                if (endUs > startUs) {
+                    onProgress(min(forwardShare, (ptsUs - startUs).toFloat() / (endUs - startUs) * forwardShare))
+                }
+            }
+            if (boomerang != null && boomerang.size > 1) {
+                // Back again: the same frames in reverse, mirrored in time.
+                val lastUs = boomerang.times.last()
+                for (i in boomerang.size - 2 downTo 0) {
+                    val frame = boomerang.load(i)
+                    writer.encode(frame, 2 * lastUs - boomerang.times[i])
+                    frame.recycle()
+                    onProgress(forwardShare + (0.9f - forwardShare) * (boomerang.size - 1 - i) / (boomerang.size - 1))
                 }
             }
             writer.finishVideo()
             onProgress(0.92f)
-            val soundDropped = copySound(context, sourceUri, probe, writer)
+            // Sound left out on purpose (muted, other speed, boomerang) isn't "dropped".
+            val soundDropped = if (audio != null) {
+                copySound(context, sourceUri, probe, writer, startUs = startUs, endUs = endUs - startUs)
+            } else {
+                false
+            }
             writer.close()
             onProgress(1f)
             soundDropped
         } finally {
             writer.release()
+            boomerang?.delete()
+        }
+    }
+
+    /** Rendered frames kept as JPEG files, to play a boomerang backwards without holding them in memory. */
+    private class FrameCache(private val dir: File) {
+        val times = mutableListOf<Long>()
+        val size: Int get() = times.size
+
+        init {
+            dir.deleteRecursively()
+            dir.mkdirs()
+        }
+
+        fun add(frame: Bitmap, timeUs: Long) {
+            File(dir, "${times.size}.jpg").outputStream().use { frame.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            times += timeUs
+        }
+
+        fun load(index: Int): Bitmap =
+            BitmapFactory.decodeFile(File(dir, "$index.jpg").absolutePath)
+                ?: throw IllegalStateException("boomerang frame $index is missing")
+
+        fun delete() {
+            dir.deleteRecursively()
         }
     }
 
@@ -103,15 +162,16 @@ object VideoProcessor {
     }
 
     /**
-     * Copies the source's sound into [writer], cut off at [endUs]. With [loopLengthUs] it starts
-     * over every [loopLengthUs] until [endUs], to stay in step with a looping clip.
-     * Returns true if the source had sound but it couldn't be copied.
+     * Copies the source's sound from [startUs] on into [writer], cut off at [endUs] of the
+     * result. With [loopLengthUs] it starts over every [loopLengthUs] until [endUs], to stay in
+     * step with a looping clip. Returns true if the source had sound but it couldn't be copied.
      */
     internal fun copySound(
         context: Context,
         uri: Uri,
         probe: Probe,
         writer: Mp4Writer,
+        startUs: Long = 0L,
         endUs: Long = Long.MAX_VALUE,
         loopLengthUs: Long = 0L,
     ): Boolean {
@@ -121,7 +181,7 @@ object VideoProcessor {
             return true
         }
         return try {
-            remuxAudio(context, uri, probe.audioTrackIndex, writer, endUs, loopLengthUs)
+            remuxAudio(context, uri, probe.audioTrackIndex, writer, startUs, endUs, loopLengthUs)
             false
         } catch (e: Exception) {
             Log.w(TAG, "audio remux failed, output will have no sound", e)
@@ -185,11 +245,15 @@ object VideoProcessor {
         videoTrackIndex: Int,
         displayWidth: Int,
         displayHeight: Int,
+        /** Frames before this are decoded but not read back; decoding stops after [endUs]. */
+        startUs: Long,
+        endUs: Long,
         onFrame: (Bitmap, Long) -> Unit,
     ) {
         val extractor = MediaExtractor()
         extractor.setDataSource(context, sourceUri, null)
         extractor.selectTrack(videoTrackIndex)
+        if (startUs > 0) extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
         val format = extractor.getTrackFormat(videoTrackIndex)
 
         // Frame-available callbacks need their own thread; the GL work happens on this one.
@@ -226,8 +290,11 @@ object VideoProcessor {
                 if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     Log.d(TAG, "decoder INFO_OUTPUT_FORMAT_CHANGED: ${decoder.outputFormat}")
                 } else if (outIndex >= 0) {
-                    val shouldRender = bufferInfo.size > 0
+                    // Before a trimmed start: decoded (the stream needs it) but not read back.
+                    val pastEnd = bufferInfo.size > 0 && bufferInfo.presentationTimeUs > endUs
+                    val shouldRender = bufferInfo.size > 0 && !pastEnd && bufferInfo.presentationTimeUs >= startUs
                     decoder.releaseOutputBuffer(outIndex, shouldRender)
+                    if (pastEnd) outputDone = true
                     if (shouldRender) {
                         val pts = bufferInfo.presentationTimeUs
                         val captured = if (reader.awaitFrame(FRAME_TIMEOUT_MS)) {
@@ -274,12 +341,14 @@ object VideoProcessor {
         sourceUri: Uri,
         audioTrackIndex: Int,
         writer: Mp4Writer,
+        startUs: Long,
         endUs: Long,
         loopLengthUs: Long,
     ) {
         val extractor = MediaExtractor()
         extractor.setDataSource(context, sourceUri, null)
         extractor.selectTrack(audioTrackIndex)
+        if (startUs > 0) extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
         val buffer = ByteBuffer.allocate(1024 * 1024)
         val info = MediaCodec.BufferInfo()
         var offsetUs = 0L
@@ -291,10 +360,15 @@ object VideoProcessor {
                     // The sound ran out: a looping clip starts over if the video goes on.
                     if (loopLengthUs <= 0 || offsetUs + loopLengthUs >= endUs) break
                     offsetUs += loopLengthUs
-                    extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+                    extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
                     continue
                 }
-                val ptsUs = extractor.sampleTime + offsetUs
+                // Trimmed: sound before the start is skipped, the rest moves up to the result's start.
+                if (extractor.sampleTime < startUs) {
+                    extractor.advance()
+                    continue
+                }
+                val ptsUs = extractor.sampleTime - startUs + offsetUs
                 if (ptsUs >= endUs) break
                 // A pass's sound can run a little longer than its picture; the next pass cuts it off.
                 if (ptsUs > lastWrittenUs) {

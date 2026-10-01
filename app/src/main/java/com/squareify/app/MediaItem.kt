@@ -70,6 +70,8 @@ data class FrameSettings(
     val adjustments: Adjustments = Adjustments(),
     /** A caption on this item only; never part of the settings for new media. */
     val text: TextOverlay? = null,
+    /** Trim, speed, sound and boomerang for a video; also never part of the settings for new media. */
+    val video: VideoEdit = VideoEdit(),
 ) : Serializable {
     companion object {
         const val DEFAULT_BLUR_STRENGTH = 1f / 3

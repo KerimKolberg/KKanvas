@@ -165,3 +165,19 @@ fun outputFileName(format: FrameFormat, displayName: String): String {
     val baseName = if (dot > 0) displayName.substring(0, dot) else displayName
     return "${format.filePrefix}_$baseName"
 }
+
+/** Length of a video in ms, or null if it can't be read. */
+fun videoDurationMs(context: Context, uri: Uri): Long? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+    } catch (e: Exception) {
+        null
+    } finally {
+        try {
+            retriever.release()
+        } catch (_: Exception) {
+        }
+    }
+}

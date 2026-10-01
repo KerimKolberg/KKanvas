@@ -34,11 +34,13 @@
   to the frame, and the canvas grows so the photo keeps its resolution.
 - Smart crop: the collage editor finds faces (Android's built-in detector) and filled cells
   keep them in view through layout and zoom changes, until the user drags the cell.
+- Video tools (single videos, in the edit sheet): trim, speed 0.25x-4x (frames dropped when
+  sped up to keep the frame rate), sound on/off, boomerang (cached JPEG frames, max 10 s).
+  Trimmed sound is cut to match; sound is left out at other speeds and in boomerangs.
 
 ## Next
-1. **Video tools**: trim, mute, speed (slow-mo / timelapse), boomerang.
-2. Watermark (kk logo).
-3. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
+1. Watermark (kk logo).
+2. Maybe: faster video rendering by drawing frames on the GPU instead of the CPU
    (now ~1.3x real time for a 1080 px collage; encoding the frames is the slowest step).
 
 Not wanted: profile-grid splitter.

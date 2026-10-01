@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -68,6 +69,14 @@ fun EditSheet(
     val source = item.preview
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // A video's length, for the trim slider.
+    var durationMs by remember { mutableStateOf<Long?>(null) }
+    if (item.isVideo) {
+        LaunchedEffect(item.sourceUri) {
+            durationMs = withContext(Dispatchers.IO) { videoDurationMs(context, item.sourceUri) }
+        }
+    }
 
     // Live preview: re-render on every change; a newer change cancels the older render.
     LaunchedEffect(settings) {
@@ -154,6 +163,10 @@ fun EditSheet(
             }
 
             Spacer(Modifier.height(8.dp))
+            if (item.isVideo) {
+                VideoControls(edit = settings.video, durationMs = durationMs, onChange = { settings = settings.copy(video = it) })
+                Spacer(Modifier.height(12.dp))
+            }
             FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
             StyleControls(
                 settings = settings,

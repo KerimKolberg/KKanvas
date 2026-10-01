@@ -10,10 +10,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.squareify.app.Border
 import com.squareify.app.FrameFormat
 import com.squareify.app.FrameSettings
+import com.squareify.app.VideoEdit
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +58,68 @@ class VideoProcessorTest {
         val outputSound = TestVideos.trackDurationUs(output, "audio/")
         assertNotNull("output has no sound track", outputSound)
         assertEquals("sound length", sourceSound.toDouble(), outputSound!!.toDouble(), 50_000.0)
+    }
+
+    /** Renders a small 2 s clip (square marker moving 8 px per frame) with [edit]; returns marker x per frame. */
+    private fun renderEdited(edit: VideoEdit, withSound: Boolean = true): Pair<List<Double>, File> = runBlocking {
+        val source = File(context.cacheDir, "test_edit_source.mp4")
+        val output = File(context.cacheDir, "test_edit_output.mp4")
+        TestVideos.create(source, FRAMES, width = 640, height = 360, step = 8f, withSound = withSound)
+        val dropped = VideoProcessor.render(context, Uri.fromFile(source), FrameSettings(bgColor = Color.BLACK, video = edit), output) { }
+        assertFalse("sound reported as dropped", dropped)
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(output.absolutePath)
+        val count = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)!!.toInt()
+        val xs = (0 until count).map { analyze(retriever.getFrameAtIndex(it)!!).markerX }
+        retriever.release()
+        Log.i(TAG, "edit=$edit frames=$count xs=${xs.map { it.toInt() }}")
+        xs to output
+    }
+
+    /** Where the marker is in source frame [n] (640 px wide clip, so no scaling into the square). */
+    private fun markerAt(n: Int) = 100.0 + 8 * n + 20
+
+    @Test
+    fun trimKeepsOnlyThePartChosen() {
+        // 0.51 s to 1.51 s: source frames 16 to 45.
+        val (xs, output) = renderEdited(VideoEdit(trimStartMs = 510, trimEndMs = 1510))
+        assertTrue("frames ${xs.size}", xs.size in 29..31)
+        assertEquals(markerAt(16), xs.first(), 9.0)
+        // The sound is cut to the same second.
+        assertEquals(1_000_000.0, TestVideos.trackDurationUs(output, "audio/")!!.toDouble(), 80_000.0)
+    }
+
+    @Test
+    fun doubleSpeedSkipsEveryOtherFrameAndDropsTheSound() {
+        val (xs, output) = renderEdited(VideoEdit(speed = 2f))
+        assertTrue("frames ${xs.size}", xs.size in 29..31)
+        // Each frame moves on two source frames.
+        assertEquals(16.0, xs[10] - xs[9], 3.0)
+        assertEquals(1_000_000.0, TestVideos.trackDurationUs(output, "video/")!!.toDouble(), 80_000.0)
+        assertNull("sound kept at 2x", TestVideos.trackDurationUs(output, "audio/"))
+    }
+
+    @Test
+    fun slowMotionStretchesTheClip() {
+        val (xs, output) = renderEdited(VideoEdit(speed = 0.5f))
+        assertEquals(FRAMES, xs.size)
+        assertEquals(4_000_000.0, TestVideos.trackDurationUs(output, "video/")!!.toDouble(), 150_000.0)
+    }
+
+    @Test
+    fun boomerangGoesThereAndBack() {
+        val (xs, _) = renderEdited(VideoEdit(trimEndMs = 1000, boomerang = true))
+        // 30 frames forward, 29 back (the turning frame isn't shown twice).
+        assertTrue("frames ${xs.size}", xs.size in 57..61)
+        val turn = xs.indices.maxBy { xs[it] }
+        assertTrue("turns at frame $turn", turn in 27..31)
+        assertEquals(xs.first(), xs.last(), 9.0)
+    }
+
+    @Test
+    fun mutedHasNoSound() {
+        val (_, output) = renderEdited(VideoEdit(muted = true))
+        assertNull(TestVideos.trackDurationUs(output, "audio/"))
     }
 
     private fun checkSmoothRender(rotation: Int, settings: FrameSettings) = runBlocking {
