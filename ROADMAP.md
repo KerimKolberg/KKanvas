@@ -71,12 +71,11 @@
   opens whenever the app starts and folds while media is added.
 
 ## Next
-(Nothing planned; ideas welcome.)
+1. **Windows app** for the ROG Flow Z13 with the same functions: one Kotlin Multiplatform
+   codebase shared with the phone app. Plan, phases and downloads in DESKTOP.md.
 
 Not wanted: profile-grid splitter.
 
 ## Open
-- GitHub: user signs in (`gh auth login`), then a private repo `kk-Squareify` and push.
-- Windows app (Compose Desktop + FFmpeg with AMD AMF encoding): needs OK for the FFmpeg
-  download (gyan.dev ffmpeg-release-essentials.zip, ~110 MB).
+- Windows app downloads need the user's OK (listed in DESKTOP.md).
 - Optional: brand colour theme (teal on navy from the logo) instead of Material You colours.
