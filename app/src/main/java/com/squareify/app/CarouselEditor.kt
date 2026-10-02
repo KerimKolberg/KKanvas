@@ -145,210 +145,207 @@ fun CarouselEditor(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    EditorFrame(
+        title = if (isNew) "New carousel" else "Edit carousel",
+        history = history,
+        unsaved = isNew || history.canUndo,
+        what = if (isNew) "new carousel" else "changes",
+        onSave = {
+            onApply(carousel, settings)
+            onDismiss()
+        },
+        onClose = onDismiss,
     ) {
-        Column(
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isNew) "New carousel" else "Edit carousel", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                UndoRedoButtons(history)
-            }
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
 
-            CarouselCanvas(
-                carousel = carousel,
-                settings = settings,
-                selected = selected,
-                guides = guides,
-                onSelect = { selected = it },
-                onPlace = { index, snapped ->
-                    update(index, snapped.placement)
-                    guides = snapped
+        CarouselCanvas(
+            carousel = carousel,
+            settings = settings,
+            selected = selected,
+            guides = guides,
+            onSelect = { selected = it },
+            onPlace = { index, snapped ->
+                update(index, snapped.placement)
+                guides = snapped
+            },
+            onGestureEnd = { guides = null },
+        )
+        Text(
+            "Drag photos and stickers anywhere, across the seams. Two fingers resize and turn them. " +
+                "Swipe an empty spot to scroll.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+        )
+        TemplatePicker(
+            aspects = carousel.photos.map { it.aspect },
+            heightUnits = heightUnits,
+            selected = template,
+            onPick = { picked ->
+                // Photos and look change together: one undo step.
+                carousel = applyTemplate(picked, carousel, heightUnits)
+                settings = templateSettings(picked, settings)
+                template = picked
+                selected = null
+            },
+        )
+
+        val index = selected?.takeIf { it < carousel.photos.size }
+        if (index != null) {
+            PhotoActions(
+                onFitSlide = {
+                    val photo = carousel.photos[index]
+                    update(index, fitSlidePlacement(slideOf(photo.placement, carousel.slides), photo.boxAspect, heightUnits))
                 },
-                onGestureEnd = { guides = null },
-            )
-            Text(
-                "Drag photos and stickers anywhere, across the seams. Two fingers resize and turn them. " +
-                    "Swipe an empty spot to scroll.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-            )
-            TemplatePicker(
-                aspects = carousel.photos.map { it.aspect },
-                heightUnits = heightUnits,
-                selected = template,
-                onPick = { picked ->
-                    // Photos and look change together: one undo step.
-                    carousel = applyTemplate(picked, carousel, heightUnits)
-                    settings = templateSettings(picked, settings)
-                    template = picked
+                onStraighten = { update(index, carousel.photos[index].placement.copy(rotation = 0f)) },
+                onFront = {
+                    val photos = carousel.photos.toMutableList()
+                    photos.add(photos.removeAt(index))
+                    carousel = carousel.copy(photos = photos)
+                    selected = photos.lastIndex
+                },
+                onBack = {
+                    val photos = carousel.photos.toMutableList()
+                    photos.add(0, photos.removeAt(index))
+                    carousel = carousel.copy(photos = photos)
+                    selected = 0
+                },
+                onRemove = {
+                    carousel = carousel.copy(photos = carousel.photos.filterIndexed { i, _ -> i != index })
                     selected = null
                 },
             )
+            val photo = carousel.photos[index]
+            CropChoices(photo) { changed ->
+                carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = changed })
+            }
+            if (!photo.framed) {
+                ShapeChips(selected = photo.shape, onSelect = { shape ->
+                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(shape = shape) })
+                })
+            }
+            PhotoAdjustments(photo.adjustments) { adjustments ->
+                carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(adjustments = adjustments) })
+            }
+        }
 
-            val index = selected?.takeIf { it < carousel.photos.size }
-            if (index != null) {
-                PhotoActions(
-                    onFitSlide = {
-                        val photo = carousel.photos[index]
-                        update(index, fitSlidePlacement(slideOf(photo.placement, carousel.slides), photo.boxAspect, heightUnits))
-                    },
-                    onStraighten = { update(index, carousel.photos[index].placement.copy(rotation = 0f)) },
-                    onFront = {
-                        val photos = carousel.photos.toMutableList()
-                        photos.add(photos.removeAt(index))
-                        carousel = carousel.copy(photos = photos)
-                        selected = photos.lastIndex
-                    },
-                    onBack = {
-                        val photos = carousel.photos.toMutableList()
-                        photos.add(0, photos.removeAt(index))
-                        carousel = carousel.copy(photos = photos)
-                        selected = 0
-                    },
-                    onRemove = {
-                        carousel = carousel.copy(photos = carousel.photos.filterIndexed { i, _ -> i != index })
-                        selected = null
-                    },
-                )
-                val photo = carousel.photos[index]
-                CropChoices(photo) { changed ->
-                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = changed })
-                }
-                if (!photo.framed) {
-                    ShapeChips(selected = photo.shape, onSelect = { shape ->
-                        carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(shape = shape) })
-                    })
-                }
-                PhotoAdjustments(photo.adjustments) { adjustments ->
-                    carousel = carousel.copy(photos = carousel.photos.toMutableList().also { it[index] = photo.copy(adjustments = adjustments) })
-                }
+        val stickerIndex = selected?.let { it - carousel.photos.size }?.takeIf { it in carousel.stickers.indices }
+        if (stickerIndex != null) {
+            val sticker = carousel.stickers[stickerIndex]
+            fun change(updated: CarouselSticker) {
+                carousel = carousel.copy(stickers = carousel.stickers.toMutableList().also { it[stickerIndex] = updated })
             }
-
-            val stickerIndex = selected?.let { it - carousel.photos.size }?.takeIf { it in carousel.stickers.indices }
-            if (stickerIndex != null) {
-                val sticker = carousel.stickers[stickerIndex]
-                fun change(updated: CarouselSticker) {
-                    carousel = carousel.copy(stickers = carousel.stickers.toMutableList().also { it[stickerIndex] = updated })
-                }
-                Row(
-                    modifier = Modifier
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    TextButton(onClick = { change(sticker.copy(placement = sticker.placement.copy(rotation = 0f))) }) { Text("Straighten") }
-                    TextButton(onClick = {
-                        val copy = sticker.copy(placement = sticker.placement.copy(x = sticker.placement.x + 0.1f, y = (sticker.placement.y + 0.06f).coerceAtMost(0.95f)))
-                        carousel = carousel.copy(stickers = carousel.stickers + copy)
-                        selected = carousel.photos.size + carousel.stickers.lastIndex
-                    }) { Text("Duplicate") }
-                    TextButton(onClick = {
-                        carousel = carousel.copy(stickers = carousel.stickers.filterIndexed { i, _ -> i != stickerIndex })
-                        selected = null
-                    }) { Text("Remove") }
-                }
-                Text("Sticker color", style = MaterialTheme.typography.labelMedium)
-                ColorChoices(selected = sticker.color, onSelect = { change(sticker.copy(color = it)) })
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                FilledTonalIconButton(
-                    onClick = { carousel = carousel.copy(slides = carousel.slides - 1) },
-                    enabled = carousel.slides > Carousel.MIN_SLIDES,
-                ) { Icon(Icons.Default.Remove, contentDescription = "Fewer slides") }
-                Text(
-                    "${carousel.slides}",
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(36.dp),
-                )
-                FilledTonalIconButton(
-                    onClick = { carousel = carousel.copy(slides = carousel.slides + 1) },
-                    enabled = carousel.slides < Carousel.MAX_SLIDES,
-                ) { Icon(Icons.Default.Add, contentDescription = "More slides") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    enabled = !loading && carousel.photos.size < Carousel.MAX_PHOTOS,
-                ) {
-                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (loading) "Adding…" else "Add photos")
-                }
-                TextButton(
-                    onClick = {
-                        val placements = spreadPlacements(carousel.photos.map { it.boxAspect }, carousel.slides, heightUnits)
-                        carousel = carousel.copy(photos = carousel.photos.zip(placements) { p, place -> p.copy(placement = place) })
-                    },
-                    enabled = carousel.photos.isNotEmpty(),
-                ) { Text("Spread out evenly") }
-            }
-            TextButton(onClick = { choosingSticker = !choosingSticker }) {
-                Icon(Icons.Default.EmojiEmotions, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (choosingSticker) "Hide stickers" else "Add sticker")
-            }
-            if (choosingSticker) {
-                StickerPalette { kind ->
-                    // Onto the slide of whatever is selected, else the first.
-                    val slide = selected?.let { carousel.layers().getOrNull(it) }?.let { slideOf(it.first, carousel.slides) } ?: 0
-                    val width = when (kind) {
-                        StickerKind.TAPE -> 0.45f
-                        StickerKind.UNDERLINE -> 0.6f
-                        StickerKind.ARROW, StickerKind.CIRCLE -> 0.45f
-                        else -> 0.25f
-                    }
-                    val tilt = if (kind == StickerKind.TAPE) -12f else 0f
-                    carousel = carousel.copy(
-                        stickers = carousel.stickers + CarouselSticker(kind, kind.defaultColor, Placement(slide + 0.5f, 0.5f, width, tilt)),
-                    )
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(onClick = { change(sticker.copy(placement = sticker.placement.copy(rotation = 0f))) }) { Text("Straighten") }
+                TextButton(onClick = {
+                    val copy = sticker.copy(placement = sticker.placement.copy(x = sticker.placement.x + 0.1f, y = (sticker.placement.y + 0.06f).coerceAtMost(0.95f)))
+                    carousel = carousel.copy(stickers = carousel.stickers + copy)
                     selected = carousel.photos.size + carousel.stickers.lastIndex
-                    choosingSticker = false
-                }
+                }) { Text("Duplicate") }
+                TextButton(onClick = {
+                    carousel = carousel.copy(stickers = carousel.stickers.filterIndexed { i, _ -> i != stickerIndex })
+                    selected = null
+                }) { Text("Remove") }
             }
+            Text("Sticker color", style = MaterialTheme.typography.labelMedium)
+            ColorChoices(selected = sticker.color, onSelect = { change(sticker.copy(color = it)) })
+        }
 
-            Spacer(Modifier.height(8.dp))
-            FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) }, formats = Panorama.FORMATS)
-            StyleControls(
-                settings = settings,
-                onChange = { settings = it },
-                sample = carousel.photos.firstNotNullOfOrNull { it.preview },
-                showText = true,
-                showFrameStyles = false,
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            FilledTonalIconButton(
+                onClick = { carousel = carousel.copy(slides = carousel.slides - 1) },
+                enabled = carousel.slides > Carousel.MIN_SLIDES,
+            ) { Icon(Icons.Default.Remove, contentDescription = "Fewer slides") }
+            Text(
+                "${carousel.slides}",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(36.dp),
             )
-
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = { previewing = true }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Visibility, contentDescription = null)
+            FilledTonalIconButton(
+                onClick = { carousel = carousel.copy(slides = carousel.slides + 1) },
+                enabled = carousel.slides < Carousel.MAX_SLIDES,
+            ) { Icon(Icons.Default.Add, contentDescription = "More slides") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                enabled = !loading && carousel.photos.size < Carousel.MAX_PHOTOS,
+            ) {
+                Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text("Preview the swipe")
+                Text(if (loading) "Adding…" else "Add photos")
             }
-            Button(
+            TextButton(
                 onClick = {
-                    onApply(carousel, settings)
-                    onDismiss()
+                    val placements = spreadPlacements(carousel.photos.map { it.boxAspect }, carousel.slides, heightUnits)
+                    carousel = carousel.copy(photos = carousel.photos.zip(placements) { p, place -> p.copy(placement = place) })
                 },
                 enabled = carousel.photos.isNotEmpty(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            ) {
-                Text(if (isNew) "Create ${carousel.slides} slides" else "Apply")
-            }
-            Spacer(Modifier.height(24.dp))
+            ) { Text("Spread out evenly") }
         }
+        TextButton(onClick = { choosingSticker = !choosingSticker }) {
+            Icon(Icons.Default.EmojiEmotions, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text(if (choosingSticker) "Hide stickers" else "Add sticker")
+        }
+        if (choosingSticker) {
+            StickerPalette { kind ->
+                // Onto the slide of whatever is selected, else the first.
+                val slide = selected?.let { carousel.layers().getOrNull(it) }?.let { slideOf(it.first, carousel.slides) } ?: 0
+                val width = when (kind) {
+                    StickerKind.TAPE -> 0.45f
+                    StickerKind.UNDERLINE -> 0.6f
+                    StickerKind.ARROW, StickerKind.CIRCLE -> 0.45f
+                    else -> 0.25f
+                }
+                val tilt = if (kind == StickerKind.TAPE) -12f else 0f
+                carousel = carousel.copy(
+                    stickers = carousel.stickers + CarouselSticker(kind, kind.defaultColor, Placement(slide + 0.5f, 0.5f, width, tilt)),
+                )
+                selected = carousel.photos.size + carousel.stickers.lastIndex
+                choosingSticker = false
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) }, formats = Panorama.FORMATS)
+        StyleControls(
+            settings = settings,
+            onChange = { settings = it },
+            sample = carousel.photos.firstNotNullOfOrNull { it.preview },
+            showText = true,
+            showFrameStyles = false,
+        )
+
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = { previewing = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Visibility, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Preview the swipe")
+        }
+        Button(
+            onClick = {
+                onApply(carousel, settings)
+                onDismiss()
+            },
+            enabled = carousel.photos.isNotEmpty(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+        ) {
+            Text(if (isNew) "Create ${carousel.slides} slides" else "Apply")
+        }
+        Spacer(Modifier.height(24.dp))
     }
 
     if (previewing) {

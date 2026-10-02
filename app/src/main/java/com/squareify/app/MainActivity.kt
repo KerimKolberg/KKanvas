@@ -121,8 +121,9 @@ fun SquarifyApp(viewModel: MainViewModel) {
     // Saveable so an open sheet or preview survives rotation along with the ViewModel.
     var editingItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var previewItemId by rememberSaveable { mutableStateOf<String?>(null) }
-    // Settings start open; they fold away once media is being added.
-    var settingsExpanded by rememberSaveable { mutableStateOf(true) }
+    // Settings start open whenever the app starts (kept in the ViewModel, not restored from an
+    // earlier session); they fold away once media is being added.
+    var settingsExpanded by viewModel::settingsExpanded
     var menuOpen by remember { mutableStateOf(false) }
     var confirmRemoveAll by remember { mutableStateOf(false) }
     // The "move originals to trash" explanation; trashIds = null means all saved items.

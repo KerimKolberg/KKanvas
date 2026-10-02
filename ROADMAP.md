@@ -66,6 +66,9 @@
   dense grid (9), contact sheet (20 on black), gallery rows (whole photos, even rows), feature
   + three, Polaroid wall (taped prints on paper), seamless hero; previewed with your photos.
   Photos can be cropped (whole / square / 4:5 / 3:2) and put in a white print border.
+- Editors are full screen with ✕, title and undo/redo: no more swiping a project away by
+  accident; closing with unsaved work asks Keep editing / Discard / Save. The settings panel
+  opens whenever the app starts and folds while media is added.
 
 ## Next
 (Nothing planned; ideas welcome.)

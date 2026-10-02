@@ -174,106 +174,103 @@ fun CollageEditor(
         history.set(history.value.copy(first = withFaces), record = false)
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    EditorFrame(
+        title = if (isNew) "New collage" else "Edit collage",
+        history = history,
+        unsaved = isNew || history.canUndo,
+        what = if (isNew) "new collage" else "changes",
+        onSave = {
+            onApply(collage, settings)
+            onDismiss()
+        },
+        onClose = onDismiss,
     ) {
-        Column(
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isNew) "New collage" else "Edit collage", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                UndoRedoButtons(history)
-            }
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
 
-            CollagePreview(
-                rendered = rendered,
-                collage = collage,
-                settings = settings,
-                selectedCell = selectedCell,
-                liveCell = liveCell,
-                onSelectCell = { selectedCell = it },
-                onPan = ::pan,
-                onDraggingChange = { dragging = it },
-                onSwap = ::swap,
-            )
-            val index = selectedCell?.takeIf { it < collage.cells.size }
-            Text(
-                when {
-                    index == null -> "Tap a photo or clip to adjust it. Hold and drag to swap two."
-                    collage.cells[index].fit == CellFit.FILL -> "Drag to reposition it. Hold, then drag onto another cell to swap."
-                    else -> "Hold, then drag it onto another cell to swap."
+        CollagePreview(
+            rendered = rendered,
+            collage = collage,
+            settings = settings,
+            selectedCell = selectedCell,
+            liveCell = liveCell,
+            onSelectCell = { selectedCell = it },
+            onPan = ::pan,
+            onDraggingChange = { dragging = it },
+            onSwap = ::swap,
+        )
+        val index = selectedCell?.takeIf { it < collage.cells.size }
+        Text(
+            when {
+                index == null -> "Tap a photo or clip to adjust it. Hold and drag to swap two."
+                collage.cells[index].fit == CellFit.FILL -> "Drag to reposition it. Hold, then drag onto another cell to swap."
+                else -> "Hold, then drag it onto another cell to swap."
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+        )
+
+        if (index != null) {
+            CellControls(
+                cell = collage.cells[index],
+                canMove = { collage.layout.neighbor(index, it, collage.cells.size) != null },
+                onChange = { changed ->
+                    if (changed.zoom != collage.cells[index].zoom) liveCell = index
+                    updateCell(index, changed)
                 },
+                onMove = { direction ->
+                    collage.layout.neighbor(index, direction, collage.cells.size)?.let { swap(index, it) }
+                },
+            )
+        }
+
+        if (collage.hasVideo) {
+            VideoOptions(collage = collage, onChange = { collage = it })
+        }
+
+        Text("Layout", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+        LayoutPicker(
+            count = collage.cells.size,
+            selected = collage.layout,
+            onSelect = { collage = collage.copy(layout = it) },
+        )
+        Spacer(Modifier.height(8.dp))
+        AdjustmentSlider("Spacing", collage.spacing, 0f, 1f) { collage = collage.copy(spacing = it) }
+
+        Spacer(Modifier.height(8.dp))
+        FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
+        StyleControls(
+            settings = settings,
+            onChange = { settings = it },
+            sample = collage.cells.firstNotNullOfOrNull { it.preview },
+            showText = true,
+            showFrameStyles = false,
+        )
+
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = {
+                onApply(collage, settings)
+                onDismiss()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (isNew) "Create collage" else "Apply")
+        }
+        if (collage.hasVideo) {
+            Text(
+                "The video renders in the background; its card shows the progress.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .align(Alignment.CenterHorizontally)
                     .padding(top = 4.dp),
             )
-
-            if (index != null) {
-                CellControls(
-                    cell = collage.cells[index],
-                    canMove = { collage.layout.neighbor(index, it, collage.cells.size) != null },
-                    onChange = { changed ->
-                        if (changed.zoom != collage.cells[index].zoom) liveCell = index
-                        updateCell(index, changed)
-                    },
-                    onMove = { direction ->
-                        collage.layout.neighbor(index, direction, collage.cells.size)?.let { swap(index, it) }
-                    },
-                )
-            }
-
-            if (collage.hasVideo) {
-                VideoOptions(collage = collage, onChange = { collage = it })
-            }
-
-            Text("Layout", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
-            LayoutPicker(
-                count = collage.cells.size,
-                selected = collage.layout,
-                onSelect = { collage = collage.copy(layout = it) },
-            )
-            Spacer(Modifier.height(8.dp))
-            AdjustmentSlider("Spacing", collage.spacing, 0f, 1f) { collage = collage.copy(spacing = it) }
-
-            Spacer(Modifier.height(8.dp))
-            FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
-            StyleControls(
-                settings = settings,
-                onChange = { settings = it },
-                sample = collage.cells.firstNotNullOfOrNull { it.preview },
-                showText = true,
-                showFrameStyles = false,
-            )
-
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    onApply(collage, settings)
-                    onDismiss()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (isNew) "Create collage" else "Apply")
-            }
-            if (collage.hasVideo) {
-                Text(
-                    "The video renders in the background; its card shows the progress.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .padding(top = 4.dp),
-                )
-            }
-            Spacer(Modifier.height(24.dp))
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 

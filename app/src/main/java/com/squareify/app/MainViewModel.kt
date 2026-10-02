@@ -52,6 +52,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var selectedIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
+    /** The settings panel on the main screen: open when the app starts, folded while adding media. */
+    var settingsExpanded by mutableStateOf(true)
+
     /** A new collage open in the editor, not yet created. */
     var collageDraft by mutableStateOf<Collage?>(null)
         private set

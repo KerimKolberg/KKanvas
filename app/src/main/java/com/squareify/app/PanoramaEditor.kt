@@ -103,116 +103,113 @@ fun PanoramaEditor(
         rendered = withContext(Dispatchers.Default) { renderPanoramaPreview(src, panorama, settings, SLIDE_PREVIEW_HEIGHT) }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    EditorFrame(
+        title = if (isNew) "Carousel slides" else "Edit slides",
+        history = history,
+        unsaved = isNew || history.canUndo,
+        what = if (isNew) "new slides" else "changes",
+        onSave = {
+            onApply(panorama, settings)
+            onDismiss()
+        },
+        onClose = onDismiss,
     ) {
-        Column(
+        Spacer(Modifier.height(8.dp))
+
+        SlideStrip(rendered = rendered, slides = panorama.slides, format = settings.format)
+        Text(
+            "Swipe to see every slide. Post them together as one carousel, in this order.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
             modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isNew) "Carousel slides" else "Edit slides", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                UndoRedoButtons(history)
-            }
-            Spacer(Modifier.height(8.dp))
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+        )
 
-            SlideStrip(rendered = rendered, slides = panorama.slides, format = settings.format)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
+            Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            FilledTonalIconButton(
+                onClick = { panorama = panorama.copy(slides = panorama.slides - 1) },
+                enabled = panorama.slides > Panorama.MIN_SLIDES,
+            ) { Icon(Icons.Default.Remove, contentDescription = "Fewer slides") }
             Text(
-                "Swipe to see every slide. Post them together as one carousel, in this order.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                "${panorama.slides}",
+                style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
+                modifier = Modifier.width(36.dp),
             )
-
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
-                Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                FilledTonalIconButton(
-                    onClick = { panorama = panorama.copy(slides = panorama.slides - 1) },
-                    enabled = panorama.slides > Panorama.MIN_SLIDES,
-                ) { Icon(Icons.Default.Remove, contentDescription = "Fewer slides") }
-                Text(
-                    "${panorama.slides}",
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(36.dp),
-                )
-                FilledTonalIconButton(
-                    onClick = { panorama = panorama.copy(slides = panorama.slides + 1) },
-                    enabled = panorama.slides < Panorama.MAX_SLIDES,
-                ) { Icon(Icons.Default.Add, contentDescription = "More slides") }
-                val autoCount = auto(settings.format)
-                TextButton(
-                    onClick = { panorama = panorama.copy(slides = autoCount) },
-                    enabled = panorama.slides != autoCount,
-                ) { Text("Auto ($autoCount)") }
-            }
-
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            ) {
-                CellFit.entries.forEachIndexed { i, fit ->
-                    SegmentedButton(
-                        selected = panorama.fit == fit,
-                        onClick = { panorama = panorama.copy(fit = fit) },
-                        shape = SegmentedButtonDefaults.itemShape(index = i, count = CellFit.entries.size),
-                        label = { Text(if (fit == CellFit.FILL) "Fill (crop)" else "Fit (whole photo)") },
-                    )
-                }
-            }
-            val src = source
-            if (panorama.fit == CellFit.FILL && src != null) {
-                val (slideW, slideH) = slideSize(settings.format)
-                val overflow = panoramaOverflow(src.width, src.height, panorama, slideW.toFloat() * panorama.slides, slideH.toFloat())
-                if (overflow > 1f) {
-                    // Which side gets cropped depends on whether the photo is wider than the strip.
-                    val sideways = src.width.toFloat() / src.height > slideW.toFloat() * panorama.slides / slideH
-                    Text(
-                        if (sideways) "Position (left – right)" else "Position (top – bottom)",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Slider(value = panorama.position, onValueChange = { panorama = panorama.copy(position = it) }, valueRange = -1f..1f)
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            FormatSelector(
-                selected = settings.format,
-                onSelect = { format ->
-                    // Keep the auto count in step with the slide shape, unless it was set by hand.
-                    if (panorama.slides == auto(settings.format)) panorama = panorama.copy(slides = auto(format))
-                    settings = settings.copy(format = format)
-                },
-                formats = Panorama.FORMATS,
-            )
-            StyleControls(settings = settings, onChange = { settings = it }, sample = preview, showBorder = false, showText = true)
-
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = { previewing = true }, enabled = source != null, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Visibility, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("Preview the swipe")
-            }
-            Button(
-                onClick = {
-                    onApply(panorama, settings)
-                    onDismiss()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            ) {
-                Text(if (isNew) "Create ${panorama.slides} slides" else "Apply")
-            }
-            Spacer(Modifier.height(24.dp))
+            FilledTonalIconButton(
+                onClick = { panorama = panorama.copy(slides = panorama.slides + 1) },
+                enabled = panorama.slides < Panorama.MAX_SLIDES,
+            ) { Icon(Icons.Default.Add, contentDescription = "More slides") }
+            val autoCount = auto(settings.format)
+            TextButton(
+                onClick = { panorama = panorama.copy(slides = autoCount) },
+                enabled = panorama.slides != autoCount,
+            ) { Text("Auto ($autoCount)") }
         }
+
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+        ) {
+            CellFit.entries.forEachIndexed { i, fit ->
+                SegmentedButton(
+                    selected = panorama.fit == fit,
+                    onClick = { panorama = panorama.copy(fit = fit) },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = CellFit.entries.size),
+                    label = { Text(if (fit == CellFit.FILL) "Fill (crop)" else "Fit (whole photo)") },
+                )
+            }
+        }
+        val src = source
+        if (panorama.fit == CellFit.FILL && src != null) {
+            val (slideW, slideH) = slideSize(settings.format)
+            val overflow = panoramaOverflow(src.width, src.height, panorama, slideW.toFloat() * panorama.slides, slideH.toFloat())
+            if (overflow > 1f) {
+                // Which side gets cropped depends on whether the photo is wider than the strip.
+                val sideways = src.width.toFloat() / src.height > slideW.toFloat() * panorama.slides / slideH
+                Text(
+                    if (sideways) "Position (left – right)" else "Position (top – bottom)",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Slider(value = panorama.position, onValueChange = { panorama = panorama.copy(position = it) }, valueRange = -1f..1f)
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        FormatSelector(
+            selected = settings.format,
+            onSelect = { format ->
+                // Keep the auto count in step with the slide shape, unless it was set by hand.
+                if (panorama.slides == auto(settings.format)) panorama = panorama.copy(slides = auto(format))
+                settings = settings.copy(format = format)
+            },
+            formats = Panorama.FORMATS,
+        )
+        StyleControls(settings = settings, onChange = { settings = it }, sample = preview, showBorder = false, showText = true)
+
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = { previewing = true }, enabled = source != null, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Visibility, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Preview the swipe")
+        }
+        Button(
+            onClick = {
+                onApply(panorama, settings)
+                onDismiss()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+        ) {
+            Text(if (isNew) "Create ${panorama.slides} slides" else "Apply")
+        }
+        Spacer(Modifier.height(24.dp))
     }
 
     val shownSource = source

@@ -89,134 +89,126 @@ fun EditSheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    EditorFrame(
+        title = "Edit: ${item.displayName}",
+        history = history,
+        unsaved = history.canUndo,
+        what = "changes",
+        onSave = {
+            onApply(settings)
+            onDismiss()
+        },
+        onClose = onDismiss,
+        scrollState = scrollState,
     ) {
-        Column(
-            modifier = Modifier
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Edit: ${item.displayName}",
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                UndoRedoButtons(history)
-            }
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
 
-            val picking = pickingSlot != null
-            val shown = if (picking || showOriginal) source else rendered
-            Box(
+        val picking = pickingSlot != null
+        val shown = if (picking || showOriginal) source else rendered
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(280.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .pointerInput(picking, source) {
+                    if (picking && source != null) {
+                        detectTapGestures { offset ->
+                            val color = pickPixel(source, size, offset) ?: return@detectTapGestures
+                            settings = if (pickingSlot == ColorSlot.SECONDARY) {
+                                settings.copy(bgColor2 = color)
+                            } else {
+                                settings.copy(bgColor = color)
+                            }
+                            pickingSlot = null
+                        }
+                    } else {
+                        detectTapGestures(onPress = {
+                            showOriginal = true
+                            tryAwaitRelease()
+                            showOriginal = false
+                        })
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            shown?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = if (shown === source) "Original" else "Preview",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+        Text(
+            when {
+                picking -> "Tap the photo to pick a color"
+                showOriginal -> "Original"
+                source != null -> "Hold the preview to see the original"
+                else -> ""
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = 4.dp),
+        )
+        if (picking) {
+            TextButton(
+                onClick = { pickingSlot = null },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) { Text("Cancel") }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        if (item.isVideo) {
+            VideoControls(edit = settings.video, durationMs = durationMs, onChange = { settings = settings.copy(video = it) })
+            Spacer(Modifier.height(12.dp))
+        }
+        FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
+        StyleControls(
+            settings = settings,
+            onChange = { settings = it },
+            photoColors = item.photoColors,
+            sample = item.preview,
+            showText = true,
+            onPickFromPhoto = if (source != null) {
+                { slot ->
+                    pickingSlot = slot
+                    // The preview is at the top; bring it into view to tap on.
+                    scope.launch { scrollState.animateScrollTo(0) }
+                }
+            } else {
+                null
+            },
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = {
+                onApply(settings)
+                onDismiss()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Apply")
+        }
+        if (onSplitIntoSlides != null) {
+            OutlinedButton(
+                onClick = {
+                    onDismiss()
+                    onSplitIntoSlides()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .pointerInput(picking, source) {
-                        if (picking && source != null) {
-                            detectTapGestures { offset ->
-                                val color = pickPixel(source, size, offset) ?: return@detectTapGestures
-                                settings = if (pickingSlot == ColorSlot.SECONDARY) {
-                                    settings.copy(bgColor2 = color)
-                                } else {
-                                    settings.copy(bgColor = color)
-                                }
-                                pickingSlot = null
-                            }
-                        } else {
-                            detectTapGestures(onPress = {
-                                showOriginal = true
-                                tryAwaitRelease()
-                                showOriginal = false
-                            })
-                        }
-                    },
-                contentAlignment = Alignment.Center,
+                    .padding(top = 8.dp),
             ) {
-                shown?.let {
-                    Image(
-                        bitmap = it.asImageBitmap(),
-                        contentDescription = if (shown === source) "Original" else "Preview",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
+                Icon(Icons.Default.ViewCarousel, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Split into carousel slides")
             }
-            Text(
-                when {
-                    picking -> "Tap the photo to pick a color"
-                    showOriginal -> "Original"
-                    source != null -> "Hold the preview to see the original"
-                    else -> ""
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 4.dp),
-            )
-            if (picking) {
-                TextButton(
-                    onClick = { pickingSlot = null },
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                ) { Text("Cancel") }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            if (item.isVideo) {
-                VideoControls(edit = settings.video, durationMs = durationMs, onChange = { settings = settings.copy(video = it) })
-                Spacer(Modifier.height(12.dp))
-            }
-            FormatSelector(selected = settings.format, onSelect = { settings = settings.copy(format = it) })
-            StyleControls(
-                settings = settings,
-                onChange = { settings = it },
-                photoColors = item.photoColors,
-                sample = item.preview,
-                showText = true,
-                onPickFromPhoto = if (source != null) {
-                    { slot ->
-                        pickingSlot = slot
-                        // The preview is at the top; bring it into view to tap on.
-                        scope.launch { scrollState.animateScrollTo(0) }
-                    }
-                } else {
-                    null
-                },
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    onApply(settings)
-                    onDismiss()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Apply")
-            }
-            if (onSplitIntoSlides != null) {
-                OutlinedButton(
-                    onClick = {
-                        onDismiss()
-                        onSplitIntoSlides()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                ) {
-                    Icon(Icons.Default.ViewCarousel, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Split into carousel slides")
-                }
-            }
-            Spacer(Modifier.height(24.dp))
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
