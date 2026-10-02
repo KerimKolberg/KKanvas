@@ -1,9 +1,9 @@
 package com.squareify.app
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.test.Test
 import kotlin.math.abs
 
 class CarouselTemplateTest {
@@ -32,11 +32,11 @@ class CarouselTemplateTest {
     fun everyPhotoGetsASlotOnItsSlides() {
         CarouselTemplate.entries.filter { it.fits(mixed.size) }.forEach { template ->
             val layout = arrangeTemplate(template, mixed, portrait)
-            assertEquals(template.name, mixed.size, layout.slots.size)
-            assertEquals(template.name, mixed.indices.toSet(), layout.order.toSet())
+            assertEquals(mixed.size, layout.slots.size, template.name)
+            assertEquals(mixed.indices.toSet(), layout.order.toSet(), template.name)
             layout.slots.forEach { slot ->
-                assertTrue("${template.name} x=${slot.placement.x}", slot.placement.x > 0f && slot.placement.x < layout.slides)
-                assertTrue("${template.name} y=${slot.placement.y}", slot.placement.y > 0f && slot.placement.y < 1f)
+                assertTrue(slot.placement.x > 0f && slot.placement.x < layout.slides, "${template.name} x=${slot.placement.x}")
+                assertTrue(slot.placement.y > 0f && slot.placement.y < 1f, "${template.name} y=${slot.placement.y}")
             }
         }
     }

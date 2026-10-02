@@ -1,8 +1,5 @@
 package com.squareify.app
 
-import android.content.Context
-import androidx.core.content.edit
-
 /** Remembers the settings used for newly added media between app launches. */
 object SettingsStore {
     private const val PREFS_NAME = "frame_settings"
@@ -33,19 +30,19 @@ object SettingsStore {
     private const val KEY_VIGNETTE = "vignette"
     private const val KEY_TEXTURE = "texture"
 
-    fun load(context: Context): FrameSettings {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun load(context: PlatformContext): FrameSettings {
+        val prefs = context.preferences(PREFS_NAME)
         val defaults = FrameSettings()
         return FrameSettings(
-            format = prefs.getString(KEY_FORMAT, null)
+            format = prefs.getString(KEY_FORMAT)
                 ?.let { name -> FrameFormat.entries.firstOrNull { it.name == name } }
                 ?: defaults.format,
-            paddingStyle = prefs.getString(KEY_PADDING_STYLE, null)
+            paddingStyle = prefs.getString(KEY_PADDING_STYLE)
                 ?.let { name -> PaddingStyle.entries.firstOrNull { it.name == name } }
                 ?: defaults.paddingStyle,
             bgColor = prefs.getInt(KEY_BG_COLOR, defaults.bgColor),
             bgColor2 = prefs.getInt(KEY_BG_COLOR_2, defaults.bgColor2),
-            gradientDirection = prefs.getString(KEY_GRADIENT_DIRECTION, null)
+            gradientDirection = prefs.getString(KEY_GRADIENT_DIRECTION)
                 ?.let { name -> GradientDirection.entries.firstOrNull { it.name == name } }
                 ?: defaults.gradientDirection,
             blurStrength = prefs.getFloat(KEY_BLUR_STRENGTH, defaults.blurStrength),
@@ -53,10 +50,10 @@ object SettingsStore {
                 margin = prefs.getFloat(KEY_MARGIN, defaults.border.margin),
                 cornerRadius = prefs.getFloat(KEY_CORNER_RADIUS, defaults.border.cornerRadius),
                 shadow = prefs.getFloat(KEY_SHADOW, defaults.border.shadow),
-                frame = prefs.getString(KEY_FRAME_STYLE, null)
+                frame = prefs.getString(KEY_FRAME_STYLE)
                     ?.let { name -> FrameStyle.entries.firstOrNull { it.name == name } }
                     ?: defaults.border.frame,
-                shape = prefs.getString(KEY_SHAPE, null)
+                shape = prefs.getString(KEY_SHAPE)
                     ?.let { name -> PhotoShape.entries.firstOrNull { it.name == name } }
                     ?: defaults.border.shape,
             ),
@@ -70,15 +67,15 @@ object SettingsStore {
                 fade = prefs.getFloat(KEY_FADE, defaults.adjustments.fade),
                 vignette = prefs.getFloat(KEY_VIGNETTE, defaults.adjustments.vignette),
             ),
-            texture = prefs.getString(KEY_TEXTURE, null)
+            texture = prefs.getString(KEY_TEXTURE)
                 ?.let { name -> Texture.entries.firstOrNull { it.name == name } }
                 ?: defaults.texture,
             watermark = Watermark(
                 enabled = prefs.getBoolean(KEY_WATERMARK, defaults.watermark.enabled),
-                mark = prefs.getString(KEY_WATERMARK_MARK, null)
+                mark = prefs.getString(KEY_WATERMARK_MARK)
                     ?.let { name -> WatermarkMark.entries.firstOrNull { it.name == name } }
                     ?: defaults.watermark.mark,
-                corner = prefs.getString(KEY_WATERMARK_CORNER, null)
+                corner = prefs.getString(KEY_WATERMARK_CORNER)
                     ?.let { name -> WatermarkCorner.entries.firstOrNull { it.name == name } }
                     ?: defaults.watermark.corner,
                 size = prefs.getFloat(KEY_WATERMARK_SIZE, defaults.watermark.size),
@@ -88,8 +85,8 @@ object SettingsStore {
         )
     }
 
-    fun save(context: Context, settings: FrameSettings) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
+    fun save(context: PlatformContext, settings: FrameSettings) {
+        context.preferences(PREFS_NAME).edit {
             putString(KEY_FORMAT, settings.format.name)
             putString(KEY_PADDING_STYLE, settings.paddingStyle.name)
             putInt(KEY_BG_COLOR, settings.bgColor)

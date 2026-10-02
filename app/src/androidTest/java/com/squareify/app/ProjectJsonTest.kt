@@ -28,7 +28,13 @@ class ProjectJsonTest {
         watermark = Watermark(enabled = true, mark = WatermarkMark.LOGO, corner = WatermarkCorner.TOP_LEFT),
     )
 
-    private fun roundTrip(item: MediaItem) = mediaItemFromJson(JSONObject(item.toJson().toString()))!!
+    /** Saved and read back; then once more after Android's org.json (what the app used to save with) rewrote the file. */
+    private fun roundTrip(item: MediaItem): MediaItem {
+        val saved = item.toJson().toString()
+        val viaOrgJson = mediaItemFromJson(parseJsonObject(JSONObject(saved).toString()))!!
+        assertEquals(item, viaOrgJson)
+        return mediaItemFromJson(parseJsonObject(saved))!!
+    }
 
     @Test
     fun aPhotoWithEverySettingComesBack() {
@@ -93,7 +99,7 @@ class ProjectJsonTest {
 
     @Test
     fun anOlderFileWithoutNewerSettingsStillLoads() {
-        val old = JSONObject("""{"id":"x","uri":"$photo","isVideo":false,"name":"old.jpg","settings":{"format":"STORY","bgColor":-16777216}}""")
+        val old = parseJsonObject("""{"id":"x","uri":"$photo","isVideo":false,"name":"old.jpg","settings":{"format":"STORY","bgColor":-16777216}}""")
         val item = mediaItemFromJson(old)!!
         assertEquals(FrameFormat.STORY, item.settings.format)
         assertEquals(Color.BLACK, item.settings.bgColor)

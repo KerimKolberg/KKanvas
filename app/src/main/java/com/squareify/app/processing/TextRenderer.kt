@@ -11,6 +11,7 @@ import androidx.core.graphics.ColorUtils
 import com.squareify.app.TextAlignment
 import com.squareify.app.TextBackdrop
 import com.squareify.app.TextOverlay
+import com.squareify.app.typeface
 import kotlin.math.max
 import kotlin.math.min
 

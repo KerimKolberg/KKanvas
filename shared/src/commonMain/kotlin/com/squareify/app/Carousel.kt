@@ -1,12 +1,12 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
-import android.net.Uri
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -26,10 +26,10 @@ data class Placement(
 
 /** A photo placed freely on a carousel. */
 data class CarouselPhoto(
-    val sourceUri: Uri,
+    val sourceUri: MediaUri,
     val displayName: String,
     /** Downscaled, for the editor and previews. */
-    val preview: Bitmap?,
+    val preview: PlatformBitmap?,
     /** The photo's width / height. */
     val aspect: Float,
     val placement: Placement,
@@ -72,10 +72,12 @@ fun placementBox(placement: Placement, aspect: Float, heightUnits: Float): Box {
     return Box(placement.x - placement.width / 2, cy - h / 2, placement.x + placement.width / 2, cy + h / 2)
 }
 
+private const val DEGREES_TO_RADIANS = PI / 180
+
 /** The smallest upright box around the photo once rotated, in slide widths. */
 fun placementBounds(placement: Placement, aspect: Float, heightUnits: Float): Box {
     val box = placementBox(placement, aspect, heightUnits)
-    val radians = Math.toRadians(placement.rotation.toDouble())
+    val radians = placement.rotation.toDouble() * DEGREES_TO_RADIANS
     val c = abs(cos(radians)).toFloat()
     val s = abs(sin(radians)).toFloat()
     val halfW = (box.width * c + box.height * s) / 2
@@ -91,7 +93,7 @@ fun placementContains(placement: Placement, aspect: Float, heightUnits: Float, p
     val cx = (box.left + box.right) / 2
     val cy = (box.top + box.bottom) / 2
     // Turn the point back by the photo's rotation, then test against the upright rectangle.
-    val radians = Math.toRadians(-placement.rotation.toDouble())
+    val radians = -placement.rotation.toDouble() * DEGREES_TO_RADIANS
     val dx = px - cx
     val dy = py - cy
     val x = (dx * cos(radians) - dy * sin(radians)).toFloat() + cx
@@ -133,7 +135,7 @@ data class Snapped(val placement: Placement, val guidesX: List<Float>, val guide
 fun snapPlacement(placement: Placement, aspect: Float, heightUnits: Float, slides: Int, threshold: Float): Snapped {
     var p = placement
     // Straighten within a few degrees of a quarter turn.
-    val quarter = Math.round(p.rotation / 90f) * 90f
+    val quarter = (p.rotation / 90f).roundToInt() * 90f
     if (abs(p.rotation - quarter) < 4f) p = p.copy(rotation = quarter)
     val upright = abs(p.rotation % 180f) < 0.01f
     val box = if (upright) placementBox(p, aspect, heightUnits) else null

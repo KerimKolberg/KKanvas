@@ -1,11 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.net.Uri
-import java.io.Serializable
-import java.util.UUID
-
 enum class PaddingStyle { SOLID, GRADIENT, BLUR }
 
 /** A texture laid over the whole picture (after the look, under text and logo). */
@@ -52,7 +46,7 @@ data class Adjustments(
     val fade: Float = 0f,
     /** 0–1: darkens the corners. */
     val vignette: Float = 0f,
-) : Serializable
+) : JavaSerializable
 
 /** A frame drawn around a single photo or video, inside the padding. */
 enum class FrameStyle(val label: String) {
@@ -80,16 +74,16 @@ data class Border(
     val frame: FrameStyle = FrameStyle.NONE,
     /** A single photo's outline (without a frame); collage cells and carousel photos have their own. */
     val shape: PhotoShape = PhotoShape.RECTANGLE,
-) : Serializable
+) : JavaSerializable
 
 /** How an item is padded and adjusted. The defaults for new items are saved by [SettingsStore]. */
 data class FrameSettings(
     val format: FrameFormat = FrameFormat.SQUARE,
     val paddingStyle: PaddingStyle = PaddingStyle.SOLID,
     /** Solid background colour, or the top colour of the gradient. */
-    val bgColor: Int = Color.WHITE,
+    val bgColor: Int = 0xFFFFFFFF.toInt(),
     /** Bottom colour of the gradient. */
-    val bgColor2: Int = Color.parseColor("#1E293B"),
+    val bgColor2: Int = 0xFF1E293B.toInt(),
     val gradientDirection: GradientDirection = GradientDirection.VERTICAL,
     /** 0–1; the default matches the blur radius of the original app. */
     val blurStrength: Float = DEFAULT_BLUR_STRENGTH,
@@ -102,25 +96,25 @@ data class FrameSettings(
     val video: VideoEdit = VideoEdit(),
     /** The kk logo in a corner; part of the settings for new media. */
     val watermark: Watermark = Watermark(),
-) : Serializable {
+) : JavaSerializable {
     companion object {
         const val DEFAULT_BLUR_STRENGTH = 1f / 3
     }
 }
 
 data class MediaItem(
-    val id: String = UUID.randomUUID().toString(),
-    val sourceUri: Uri,
+    val id: String = randomId(),
+    val sourceUri: MediaUri,
     val isVideo: Boolean,
     val displayName: String,
     val settings: FrameSettings = FrameSettings(),
     /** The photo (or a video frame), downscaled; used for thumbnails, live previews and colour picking. */
-    val preview: Bitmap? = null,
+    val preview: PlatformBitmap? = null,
     /** A few colours taken from [preview], offered as background colours. */
     val photoColors: List<Int> = emptyList(),
-    val thumbnail: Bitmap? = null,
+    val thumbnail: PlatformBitmap? = null,
     /** The saved file; kept after an edit so the next save overwrites it instead of adding a copy. */
-    val outputUri: Uri? = null,
+    val outputUri: MediaUri? = null,
     val isProcessing: Boolean = false,
     val progress: Float = 0f,
     /** The saved file matches the current settings. */
@@ -137,5 +131,5 @@ data class MediaItem(
     /** Set for a carousel of photos placed freely across slides. */
     val carousel: Carousel? = null,
     /** A panorama's or carousel's saved slides, in order; [outputUri] is the first. */
-    val outputUris: List<Uri> = emptyList(),
+    val outputUris: List<MediaUri> = emptyList(),
 )

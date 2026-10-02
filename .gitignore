@@ -10,3 +10,5 @@
 .cxx
 .kotlin
 /app/release
+/shared/build
+/desktopApp/build

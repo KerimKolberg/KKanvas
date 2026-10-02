@@ -1,11 +1,11 @@
 package com.squareify.app
 
-import android.content.Context
-import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
-import androidx.core.content.edit
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /** A named set of adjustments, applied in one tap. */
 data class Look(val name: String, val adjustments: Adjustments)
@@ -30,37 +30,39 @@ object LooksStore {
     val saved = mutableStateListOf<Look>()
     private var loaded = false
 
-    fun load(context: Context) {
+    fun load(context: PlatformContext) {
         if (loaded) return
         loaded = true
-        val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_LOOKS, null) ?: return
+        val json = context.preferences(PREFS_NAME).getString(KEY_LOOKS) ?: return
         try {
-            val array = JSONArray(json)
-            for (i in 0 until array.length()) saved += array.getJSONObject(i).toLook()
+            saved += decode(json)
         } catch (e: Exception) {
-            Log.w(TAG, "could not read saved looks", e)
+            logWarning(TAG, "could not read saved looks", e)
         }
     }
 
     /** Adds [look], replacing a saved look with the same name. */
-    fun add(context: Context, look: Look) {
+    fun add(context: PlatformContext, look: Look) {
         val existing = saved.indexOfFirst { it.name.equals(look.name, ignoreCase = true) }
         if (existing >= 0) saved[existing] = look else saved += look
         persist(context)
     }
 
-    fun remove(context: Context, look: Look) {
+    fun remove(context: PlatformContext, look: Look) {
         saved.remove(look)
         persist(context)
     }
 
-    private fun persist(context: Context) {
-        val array = JSONArray()
-        saved.forEach { array.put(it.toJson()) }
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit { putString(KEY_LOOKS, array.toString()) }
+    private fun persist(context: PlatformContext) {
+        context.preferences(PREFS_NAME).edit { putString(KEY_LOOKS, encode(saved)) }
     }
 
-    private fun Look.toJson() = adjustments.toJson(JSONObject().put("name", name))
+    fun encode(looks: List<Look>): String = JsonArray(looks.map { it.adjustments.toJson(name = it.name) }).toString()
 
-    private fun JSONObject.toLook() = Look(getString("name"), adjustmentsFromJson(this))
+    fun decode(json: String): List<Look> =
+        (Json.parseToJsonElement(json) as JsonArray).map { element ->
+            val o = element as JsonObject
+            val name = (o["name"] as? JsonPrimitive)?.contentOrNull ?: error("a look without a name")
+            Look(name, adjustmentsFromJson(o))
+        }
 }

@@ -1,10 +1,10 @@
 package com.squareify.app
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class CarouselTest {
     private val square = 1f // slide height for 1:1, in slide widths
@@ -55,8 +55,8 @@ class CarouselTest {
     fun warnsAboutSliversAndEmptySlides() {
         // Reaches only 0.02 into slide 2.
         val warnings = carouselWarnings(3, listOf(Placement(x = 0.52f, y = 0.5f, width = 1f) to 1f), square)
-        assertTrue(warnings.toString(), warnings.any { it.contains("sliver") && it.contains("slide 2") })
-        assertTrue(warnings.toString(), warnings.any { it.contains("Slide 3 has no photo") })
+        assertTrue(warnings.any { it.contains("sliver") && it.contains("slide 2") }, warnings.toString())
+        assertTrue(warnings.any { it.contains("Slide 3 has no photo") }, warnings.toString())
         // A photo straddling the seam generously is fine.
         assertTrue(carouselWarnings(2, listOf(Placement(1f, 0.5f, 1.2f) to 1f), square).isEmpty())
     }

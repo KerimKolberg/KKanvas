@@ -1,7 +1,8 @@
 package com.squareify.app
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class CollageLayoutTest {
     private val area = Box(0f, 0f, 1000f, 1000f)
@@ -39,7 +40,7 @@ class CollageLayoutTest {
     fun everyLayoutCoversTheWholeArea() {
         CollageLayout.entries.forEach { layout ->
             val total = layout.cells.sumOf { (it.width * it.height).toDouble() }
-            assertEquals(layout.label, 1.0, total, 1e-4)
+            assertEquals(1.0, total, 1e-4, layout.label)
         }
     }
 
@@ -84,7 +85,7 @@ class CollageLayoutTest {
         assertEquals(listOf(CollageLayout.GRID_3X3), CollageLayout.forCount(7))
         assertEquals(listOf(CollageLayout.GRID_3X3), CollageLayout.forCount(9))
         (2..CollageLayout.MAX_PHOTOS).forEach { n ->
-            assertEquals("layouts for $n", true, CollageLayout.forCount(n).isNotEmpty())
+            assertTrue(CollageLayout.forCount(n).isNotEmpty(), "layouts for $n")
         }
     }
 }

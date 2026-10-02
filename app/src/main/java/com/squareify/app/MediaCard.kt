@@ -92,10 +92,12 @@ fun MediaCard(
             )
         }
 
+        val panorama = item.panorama
+        val carousel = item.carousel
         val label = when {
             item.collage != null -> if (item.isVideo) "Video collage" else "Collage"
-            item.panorama != null -> "${item.panorama.slides} slides"
-            item.carousel != null -> "Carousel · ${item.carousel.slides} slides"
+            panorama != null -> "${panorama.slides} slides"
+            carousel != null -> "Carousel · ${carousel.slides} slides"
             item.isVideo -> "Video"
             else -> null
         }
@@ -146,7 +148,8 @@ fun MediaCard(
             }
         }
 
-        if (item.error != null) {
+        val error = item.error
+        if (error != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -156,7 +159,7 @@ fun MediaCard(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        item.error,
+                        error,
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                         textAlign = TextAlign.Center,
@@ -177,7 +180,8 @@ fun MediaCard(
             }
         }
 
-        if (item.warning != null && !item.isProcessing) {
+        val warning = item.warning
+        if (warning != null && !item.isProcessing) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -194,7 +198,7 @@ fun MediaCard(
                     tint = Color.Black,
                 )
                 Spacer(Modifier.width(3.dp))
-                Text(item.warning, color = Color.Black, style = MaterialTheme.typography.labelSmall)
+                Text(warning, color = Color.Black, style = MaterialTheme.typography.labelSmall)
             }
         }
 

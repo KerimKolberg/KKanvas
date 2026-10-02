@@ -1,8 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
-import android.net.Uri
-import java.io.Serializable
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -97,10 +94,10 @@ enum class ShortClips { FREEZE, LOOP }
 
 /** One photo or video clip in a collage. */
 data class CollageCell(
-    val sourceUri: Uri,
+    val sourceUri: MediaUri,
     val displayName: String,
     /** The photo (or a frame from the middle of the clip), downscaled; for live previews. */
-    val preview: Bitmap?,
+    val preview: PlatformBitmap?,
     val isVideo: Boolean = false,
     val fit: CellFit = CellFit.FILL,
     /** 1 = the photo just fills its cell; larger zooms in. */
@@ -156,7 +153,7 @@ data class CollageSpec(
     val spacing: Float,
     val shortClips: ShortClips,
     val soundCell: Int?,
-) : Serializable {
+) : JavaSerializable {
     data class CellSpec(
         val uri: String,
         val displayName: String,
@@ -170,13 +167,13 @@ data class CollageSpec(
         val panned: Boolean = false,
         val shape: PhotoShape = PhotoShape.RECTANGLE,
         val adjustments: Adjustments = Adjustments(),
-    ) : Serializable
+    ) : JavaSerializable
 
     fun toCollage() = Collage(
         layout = layout,
         cells = cells.map {
             CollageCell(
-                Uri.parse(it.uri), it.displayName, null, it.isVideo, it.fit, it.zoom, it.panX, it.panY,
+                mediaUri(it.uri), it.displayName, null, it.isVideo, it.fit, it.zoom, it.panX, it.panY,
                 focusX = it.focusX, focusY = it.focusY, panned = it.panned, shape = it.shape, adjustments = it.adjustments,
             )
         },

@@ -21,3 +21,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "kk-Squareify"
 include(":app")
+// Code shared by the phone app and the Windows app, and the Windows app itself (see DESKTOP.md).
+include(":shared")
+include(":desktopApp")

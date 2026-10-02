@@ -1,6 +1,5 @@
 package com.squareify.app
 
-import java.io.Serializable
 import kotlin.math.max
 import kotlin.math.min
 
@@ -14,7 +13,7 @@ data class VideoEdit(
     val speed: Float = 1f,
     /** Plays forward, then backward. */
     val boomerang: Boolean = false,
-) : Serializable {
+) : JavaSerializable {
     /** Sound only survives at normal speed and when not played backwards. */
     val keepsSound: Boolean get() = !muted && speed == 1f && !boomerang
 

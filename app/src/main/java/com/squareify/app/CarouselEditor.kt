@@ -748,7 +748,7 @@ private fun CropChoices(photo: CarouselPhoto, onChange: (CarouselPhoto) -> Unit)
     ) {
         crops.forEach { (label, aspect) ->
             FilterChip(
-                selected = photo.crop == aspect || (aspect != null && photo.crop != null && abs(photo.crop - aspect) < 0.01f),
+                selected = photo.crop == aspect || (aspect != null && photo.crop?.let { abs(it - aspect) < 0.01f } == true),
                 onClick = { onChange(photo.copy(crop = aspect)) },
                 label = { Text(label) },
             )

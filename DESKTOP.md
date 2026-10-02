@@ -62,6 +62,28 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
 6. **Packaging and CI** — kk-Squareify.exe with the kk icon (portable folder first, installer
    optional), version shared with the phone app, GitHub builds the Windows app on every push.
 
+## Progress
+
+- **Phase 0 — done.** Compose Multiplatform 1.12.1 builds with AGP 9.4.1 / Gradle 9.8 / Kotlin
+  2.4.20 (newer than its tested range; deprecation warnings only). Multiplatform Material 3 stays
+  on **1.9.0**: it maps to the phone's androidx Material 3 1.4.0, while newer ones are alphas that
+  would quietly upgrade the phone app. The phone APK's contents are unchanged by the new modules.
+  Temurin 21 (with jpackage) is in `tools/jdk-21`; FFmpeg 9.0.2 in `tools/ffmpeg` has `h264_amf`,
+  `hevc_amf`, `av1_amf` and `libx264` (300 frames of 1080×1350: 0.58 s on the Radeon, 0.89 s in
+  software). Input test on the Z13: desktop Compose sees **every touch and the pen as one mouse
+  pointer**, no multi-touch and no pinch; wheel and touchpad scrolling arrive. So: handles to
+  resize and turn, Ctrl+wheel / touchpad to zoom (phase 5). Real two-finger gestures would need
+  Windows' pointer messages read natively — possible later, not planned.
+- **Phase 1 — done.** In `shared/commonMain` (package `com.squareify.app`, so the phone code
+  didn't change its imports): the data models, collage / panorama / carousel geometry, templates,
+  video edits, looks, undo history, settings, saved projects. The phone-only types are aliases
+  on Android (`MediaUri` = `Uri`, `PlatformBitmap` = `Bitmap`, `PlatformContext` = `Context`),
+  settings go through a small `Preferences` interface (SharedPreferences on the phone, a
+  .properties file in %APPDATA%\kk-Squareify on Windows), and JSON is kotlinx.serialization's
+  instead of Android's org.json — same file format, and files written by the old code load the
+  same (tested). The shared tests run on the desktop JVM (`./gradlew :shared:desktopTest`);
+  the phone's 64 on-device tests pass.
+
 ## What's the same, what differs
 
 | Feature | Windows |
