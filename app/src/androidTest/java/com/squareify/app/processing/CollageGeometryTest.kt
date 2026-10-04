@@ -3,7 +3,6 @@ package com.squareify.app.processing
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
-import android.graphics.RectF
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
@@ -79,12 +78,12 @@ class CollageGeometryTest {
         }
 
     /** Where a [width] x [height] picture goes when fitted into [cell], in whole pixels. */
-    private fun fit(width: Int, height: Int, cell: RectF): Rect {
-        val scale = min(cell.width() / width, cell.height() / height)
+    private fun fit(width: Int, height: Int, cell: androidx.compose.ui.geometry.Rect): Rect {
+        val scale = min(cell.width / width, cell.height / height)
         val w = width * scale
         val h = height * scale
-        val left = cell.left + (cell.width() - w) / 2
-        val top = cell.top + (cell.height() - h) / 2
+        val left = cell.left + (cell.width - w) / 2
+        val top = cell.top + (cell.height - h) / 2
         return Rect(left.toInt(), top.toInt(), (left + w).toInt() - 1, (top + h).toInt() - 1)
     }
 

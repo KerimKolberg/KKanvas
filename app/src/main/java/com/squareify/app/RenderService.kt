@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.IntentCompat
 import com.squareify.app.processing.VideoCollageProcessor
 import com.squareify.app.processing.VideoProcessor
+import com.squareify.app.processing.initRenderers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,7 +54,7 @@ class RenderService : Service() {
     override fun onCreate() {
         super.onCreate()
         // Rendering can start without the app's screen (restarted by Android), so load it here too.
-        WatermarkImages.load(this)
+        initRenderers(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

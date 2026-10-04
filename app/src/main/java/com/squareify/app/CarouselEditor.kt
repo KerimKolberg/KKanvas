@@ -67,11 +67,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.asComposeColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -86,8 +84,7 @@ import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.PhotoProcessor
 import com.squareify.app.processing.StickerRenderer
-import com.squareify.app.processing.TextRenderer
-import com.squareify.app.processing.WatermarkRenderer
+import com.squareify.app.processing.rotateAround
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -390,27 +387,11 @@ private fun CarouselCanvas(
     val pxWidth = (pxHeight / heightUnits * carousel.slides).toInt().coerceAtLeast(1)
     LaunchedEffect(first, settings.copy(adjustments = Adjustments(), text = null, watermark = Watermark()), pxWidth, pxHeight) {
         delay(30)
-        background = withContext(Dispatchers.Default) {
-            Bitmap.createBitmap(pxWidth, pxHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
-                val canvas = android.graphics.Canvas(bitmap)
-                if (first != null) PhotoProcessor.drawBackground(canvas, first, settings, pxWidth, pxHeight) else canvas.drawColor(settings.bgColor)
-            }
-        }
+        background = withContext(Dispatchers.Default) { PhotoProcessor.background(first, settings, pxWidth, pxHeight) }
     }
     LaunchedEffect(settings.text, settings.watermark, pxWidth, pxHeight) {
         delay(30)
-        overlay = withContext(Dispatchers.Default) {
-            if (settings.text == null && !settings.watermark.enabled) {
-                null
-            } else {
-                Bitmap.createBitmap(pxWidth, pxHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
-                    val canvas = android.graphics.Canvas(bitmap)
-                    val area = android.graphics.RectF(0f, 0f, pxWidth.toFloat(), pxHeight.toFloat())
-                    TextRenderer.draw(canvas, settings.text, area)
-                    WatermarkRenderer.draw(canvas, settings.watermark, area)
-                }
-            }
-        }
+        overlay = withContext(Dispatchers.Default) { PhotoProcessor.captionAndWatermark(settings, pxWidth, pxHeight) }
     }
 
     val currentCarousel by rememberUpdatedState(carousel)
@@ -502,10 +483,10 @@ private fun CarouselCanvas(
                 drawIntoCanvas { canvas ->
                     carousel.stickers.forEach { sticker ->
                         val rect = CarouselRenderer.placementRect(sticker.placement, sticker.kind.aspect, carousel.slides, size.width, size.height)
-                        canvas.nativeCanvas.save()
-                        canvas.nativeCanvas.rotate(sticker.placement.rotation, rect.centerX(), rect.centerY())
-                        StickerRenderer.draw(canvas.nativeCanvas, sticker.kind, sticker.color, rect)
-                        canvas.nativeCanvas.restore()
+                        canvas.save()
+                        canvas.rotateAround(sticker.placement.rotation, rect.center.x, rect.center.y)
+                        StickerRenderer.draw(canvas, sticker.kind, sticker.color, rect)
+                        canvas.restore()
                     }
                 }
             }
@@ -604,8 +585,8 @@ private fun StickerPalette(onPick: (StickerKind) -> Unit) {
                 ) {
                     val w = min(size.width * 0.86f, size.height * 0.8f * kind.aspect)
                     val h = w / kind.aspect
-                    val rect = android.graphics.RectF(center.x - w / 2, center.y - h / 2, center.x + w / 2, center.y + h / 2)
-                    drawIntoCanvas { StickerRenderer.draw(it.nativeCanvas, kind, kind.defaultColor, rect) }
+                    val rect = androidx.compose.ui.geometry.Rect(center.x - w / 2, center.y - h / 2, center.x + w / 2, center.y + h / 2)
+                    drawIntoCanvas { StickerRenderer.draw(it, kind, kind.defaultColor, rect) }
                 }
                 Text(kind.label, style = MaterialTheme.typography.labelSmall)
             }
@@ -626,7 +607,7 @@ private fun CarouselPhotoView(photo: CarouselPhoto, preview: Bitmap, settings: F
         )
     }
     val filter = remember(photo.adjustments, settings.adjustments) {
-        PhotoProcessor.colorFilter(photo.adjustments, settings.adjustments)?.asComposeColorFilter()
+        PhotoProcessor.colorFilter(photo.adjustments, settings.adjustments)
     }
     if (photo.framed) {
         BoxWithConstraints(

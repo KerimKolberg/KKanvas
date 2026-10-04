@@ -58,12 +58,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.Typeface
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.textFontFamily
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -511,7 +510,7 @@ private fun TextControls(settings: FrameSettings, onChange: (FrameSettings) -> U
                 selected = overlay.font == font,
                 onClick = { change { copy(font = font) } },
                 // Each name is shown in its own font.
-                label = { Text(font.label, fontFamily = remember(font) { FontFamily(Typeface(font.typeface)) }) },
+                label = { Text(font.label, fontFamily = remember(font) { textFontFamily(font) }) },
             )
         }
     }

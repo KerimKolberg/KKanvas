@@ -11,6 +11,7 @@ import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.CollageRenderer
 import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.loadDownscaledBitmap
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -123,7 +124,7 @@ fun renderCollage(context: Context, collage: Collage, settings: FrameSettings, m
     val rects = CollageRenderer.cellRects(collage, settings, w, h)
     val sources = collage.cells.mapIndexed { i, cell ->
         val rect = rects.getOrNull(i) ?: return@mapIndexed null
-        val needed = (max(rect.width(), rect.height()) * cell.zoom * 2).roundToInt().coerceIn(512, 4000)
+        val needed = (max(rect.width, rect.height) * cell.zoom * 2).roundToInt().coerceIn(512, 4000)
         loadSourceImage(context, cell.sourceUri, cell.isVideo, needed)
     }
     return CollageRenderer.render(collage, sources, settings, w, h)

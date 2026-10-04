@@ -17,6 +17,8 @@ import com.squareify.app.processing.ColorExtractor
 import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.initRenderers
+import com.squareify.app.processing.loadDownscaledBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -101,7 +103,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         LooksStore.load(application)
-        WatermarkImages.load(application)
+        initRenderers(application)
         // Mirror progress from RenderService into the grid; drop finished entries from the holder.
         viewModelScope.launch {
             RenderStateHolder.states.collect { states ->
@@ -656,7 +658,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Each photo only as large as it appears on the slides (with room to spare), within memory.
         val sources = carousel.photos.mapIndexed { i, photo ->
             val rect = CarouselRenderer.photoRect(carousel, i, width.toFloat() * carousel.slides, height.toFloat())
-            val needed = (maxOf(rect.width(), rect.height()) * 1.2f).toInt().coerceIn(256, 4000)
+            val needed = (maxOf(rect.width, rect.height) * 1.2f).toInt().coerceIn(256, 4000)
             try {
                 PhotoProcessor.loadDownscaledBitmap(context, photo.sourceUri, needed)
             } catch (e: Exception) {

@@ -1,6 +1,5 @@
 package com.squareify.app
 
-import android.graphics.RectF
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,10 +17,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -71,5 +70,5 @@ fun PhotoAdjustments(adjustments: Adjustments, onChange: (Adjustments) -> Unit) 
 /** The same outline as the saved photo, for clipping live previews; [cornerRadius] for rectangles. */
 fun photoOutline(shape: PhotoShape, cornerRadius: (Size) -> Float): Shape = object : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
-        Outline.Generic(PhotoShapes.path(shape, RectF(0f, 0f, size.width, size.height), cornerRadius(size)).asComposePath())
+        Outline.Generic(PhotoShapes.path(shape, Rect(0f, 0f, size.width, size.height), cornerRadius(size)))
 }

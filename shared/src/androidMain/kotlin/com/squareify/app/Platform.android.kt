@@ -2,7 +2,6 @@ package com.squareify.app
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.graphics.Typeface
 import android.net.Uri
 import android.util.Log
 import java.io.File
@@ -61,14 +60,3 @@ actual fun logWarning(tag: String, message: String, error: Throwable?) {
     Log.w(tag, message, error)
 }
 
-/** The phone's built-in font for a caption. */
-val TextFont.typeface: Typeface
-    get() = Typeface.create(
-        androidFamily,
-        when {
-            bold && italic -> Typeface.BOLD_ITALIC
-            bold -> Typeface.BOLD
-            italic -> Typeface.ITALIC
-            else -> Typeface.NORMAL
-        },
-    )

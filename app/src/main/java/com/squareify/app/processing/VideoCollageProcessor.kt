@@ -2,7 +2,6 @@ package com.squareify.app.processing
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.RectF
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.net.Uri
@@ -10,6 +9,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
+import androidx.compose.ui.geometry.Rect
 import com.squareify.app.CellFit
 import com.squareify.app.Collage
 import com.squareify.app.CollageCell
@@ -68,7 +68,7 @@ object VideoCollageProcessor {
                     Log.d(TAG, "clip $i: $probe read at ${w}x$h")
                     clips[i] = ClipReader(context, cell.sourceUri, probe, w, h, handler, loop)
                 } else {
-                    val needed = (max(rect.width(), rect.height()) * cell.zoom * 2).roundToInt().coerceIn(512, 4000)
+                    val needed = (max(rect.width, rect.height) * cell.zoom * 2).roundToInt().coerceIn(512, 4000)
                     photos[i] = PhotoProcessor.loadDownscaledBitmap(context, cell.sourceUri, needed)
                 }
             }
@@ -125,10 +125,10 @@ object VideoCollageProcessor {
      * How large to read a clip: twice what its cell shows, so the final downscale stays smooth,
      * but never more than its full size. Keeps the aspect ratio.
      */
-    private fun readSize(width: Int, height: Int, rect: RectF, cell: CollageCell): Pair<Int, Int> {
+    private fun readSize(width: Int, height: Int, rect: Rect, cell: CollageCell): Pair<Int, Int> {
         val shown = when (cell.fit) {
-            CellFit.FILL -> max(rect.width() / width, rect.height() / height) * cell.zoom
-            CellFit.FIT -> min(rect.width() / width, rect.height() / height)
+            CellFit.FILL -> max(rect.width / width, rect.height / height) * cell.zoom
+            CellFit.FIT -> min(rect.width / width, rect.height / height)
         }
         val scale = min(1f, shown * 2)
         return max(16, (width * scale).roundToInt() / 2 * 2) to max(16, (height * scale).roundToInt() / 2 * 2)

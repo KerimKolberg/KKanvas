@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.loadDownscaledBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

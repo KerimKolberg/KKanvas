@@ -9,12 +9,23 @@ plugins {
 }
 
 kotlin {
-    // The shared tests run on the desktop JVM; the phone is covered by the app's on-device tests
-    // (Android's classes, like Uri, only exist on a device).
+    compilerOptions {
+        // expect/actual classes (MediaUri, PlatformBitmap, ...) are still Beta in Kotlin.
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
+    // The shared tests run on the desktop JVM and, as their own test app, on the phone (so the same
+    // picture tests prove both draw alike). Android's classes, like Uri, only exist on a device, so
+    // there are no Android tests on the computer.
     androidLibrary {
         namespace = "com.squareify.shared"
         compileSdk = 37
         minSdk = 31
+        withDeviceTestBuilder {
+            sourceSetTreeName = "test"
+        }.configure {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -37,8 +48,24 @@ kotlin {
             // Saved projects and looks are JSON; part of the shared code's API.
             api(libs.kotlinx.serialization.json)
         }
+        val desktopTest by getting {
+            dependencies {
+                // Skia's native library, so pictures can be drawn in the tests (Windows, or Linux on GitHub).
+                implementation(compose.desktop.currentOs)
+            }
+        }
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.androidx.test.runner)
+            implementation(libs.androidx.test.ext.junit)
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
     }
+}
+
+// Compose's own resource system isn't used here (fonts and artwork are plain resources), and its
+// asset copying for the phone test app isn't wired up with this Android Gradle plugin.
+tasks.matching { it.name == "copyAndroidDeviceTestComposeResourcesToAndroidAssets" }.configureEach {
+    enabled = false
 }

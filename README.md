@@ -30,7 +30,8 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   with a blur of its own photo. Arrows or hold-and-drag swap photos between cells.
   Filled cells keep faces in view (smart crop) until you move the photo yourself.
   Photo collages are saved 2160 px wide.
-- Text tab in each item's editor: a caption or title in one of 6 fonts, with size, colour,
+- Text tab in each item's editor: a caption or title in one of 6 bundled fonts (open licences,
+  `shared/src/commonMain/resources/fonts`, licences beside them), with size, colour,
   shadow or box behind it, alignment and height. Looks don't affect it.
 - Textures over the whole post (paper, dust, light leak) and, on carousels, stickers (tape,
   hearts, stars, sparkles, arrows, scribbles, underlines) moved and turned like photos.
@@ -48,9 +49,13 @@ and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignett
   (1080 px wide, 30 fps): all clips play at once for as long as the longest one, shorter
   clips freeze on their last frame or loop, and the sound comes from one chosen clip or none.
 
-Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
+Kotlin + Jetpack Compose, minSdk 31, targetSdk 34. The models, geometry and all the drawing live in
+`shared/` (Kotlin Multiplatform), which the Windows app in progress uses too (see DESKTOP.md).
 
 ## Source layout
+
+Files are in `app/src/main/java/com/squareify/app/`, or for the shared code in
+`shared/src/commonMain/kotlin/com/squareify/app/` (same package names).
 
 | File | What it does |
 | --- | --- |
@@ -80,7 +85,8 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 | `processing/CollageRenderer.kt` | Draws a collage from its cells' pictures |
 | `processing/PanoramaRenderer.kt` | Draws a panorama strip, or one slide of it |
 | `TextOverlay.kt`, `processing/TextRenderer.kt` | Captions: settings and drawing |
-| `Watermark.kt`, `processing/WatermarkRenderer.kt` | The kk logo watermark; artwork in `res/drawable-nodpi` |
+| `Watermark.kt`, `processing/WatermarkRenderer.kt` | The kk logo watermark; artwork in `shared/src/commonMain/resources/watermark` |
+| `Platform.kt`, `processing/Graphics.kt` | What the shared code needs from the phone or Windows (files, settings, shadows, fonts) |
 | `VideoEdit.kt`, `VideoControls.kt` | Trim, speed, sound and boomerang for a video |
 | `processing/VideoProcessor.kt` | Single video: decode, pad each frame, encode, copy the sound |
 | `processing/VideoCollageProcessor.kt` | Video collage: one decoder per clip on a shared timeline |
@@ -93,6 +99,13 @@ Kotlin + Jetpack Compose, minSdk 31, targetSdk 34.
 On-device tests (`app/src/androidTest`) render synthetic clips and check motion, timing,
 sound and colours; install both APKs and run them with
 `adb shell am instrument -w com.squareify.app.test/androidx.test.runner.AndroidJUnitRunner`.
+
+The shared tests (`shared/src/commonTest`: models, saved projects, and the picture tests for
+looks, frames, shapes, collages, carousels, panoramas, text, textures, stickers and the logo)
+run on the computer with `./gradlew :shared:desktopTest`, and on the phone as their own test
+app, which leaves the installed app alone: build it with `./gradlew :shared:assembleAndroidDeviceTest`,
+install `shared/build/outputs/apk/androidTest/shared-androidTest.apk` and run
+`adb shell am instrument -w com.squareify.shared.test/androidx.test.runner.AndroidJUnitRunner`.
 
 ## Build
 

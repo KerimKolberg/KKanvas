@@ -60,10 +60,14 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidColorFilter
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toAndroidRectF
+import androidx.compose.ui.graphics.toComposeRect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -138,12 +142,12 @@ fun CollageEditor(
         if (cell.fit != CellFit.FILL) return
         val rect = CollageRenderer.cellRects(collage, settings, previewWidth, previewHeight).getOrNull(index) ?: return
         val crop = CollageRenderer.cropFor(source, rect, cell)
-        val sourcePerPixel = crop.width() / rect.width()
-        val slackX = (source.width - crop.width()) / 2
-        val slackY = (source.height - crop.height()) / 2
+        val sourcePerPixel = crop.width / rect.width
+        val slackX = (source.width - crop.width) / 2
+        val slackY = (source.height - crop.height) / 2
         // Start from where the photo is now, which for a smart-cropped cell is around the faces.
-        val panX = if (slackX > 0.5f) (crop.centerX() - source.width / 2f) / slackX else cell.panX
-        val panY = if (slackY > 0.5f) (crop.centerY() - source.height / 2f) / slackY else cell.panY
+        val panX = if (slackX > 0.5f) (crop.center.x - source.width / 2f) / slackX else cell.panX
+        val panY = if (slackY > 0.5f) (crop.center.y - source.height / 2f) / slackY else cell.panY
         // Dragging right shows more of the left side, so the crop moves the other way.
         liveCell = index
         updateCell(
@@ -386,14 +390,14 @@ private fun CollagePreview(
                 if (liveIndex != null && live != null && live.fit == CellFit.FILL && liveSource != null && liveRect != null) {
                     val cellInBitmap = CollageRenderer.cellRects(collage, settings, rendered.width, rendered.height)[liveIndex]
                     val crop = CollageRenderer.cropFor(liveSource, cellInBitmap, live)
-                    val radius = PhotoProcessor.cornerRadius(settings.border, liveRect)
-                    livePaint.colorFilter = PhotoProcessor.colorFilter(live.adjustments, settings.adjustments)
+                    val radius = PhotoProcessor.cornerRadius(settings.border, liveRect.toComposeRect())
+                    livePaint.colorFilter = PhotoProcessor.colorFilter(live.adjustments, settings.adjustments)?.asAndroidColorFilter()
                     drawIntoCanvas { canvas ->
                         val native = canvas.nativeCanvas
                         native.save()
-                        native.clipPath(PhotoShapes.path(live.shape, liveRect, radius))
+                        native.clipPath(PhotoShapes.path(live.shape, liveRect.toComposeRect(), radius).asAndroidPath())
                         val matrix = android.graphics.Matrix()
-                        matrix.setRectToRect(crop, liveRect, android.graphics.Matrix.ScaleToFit.FILL)
+                        matrix.setRectToRect(crop.toAndroidRectF(), liveRect, android.graphics.Matrix.ScaleToFit.FILL)
                         native.drawBitmap(liveSource, matrix, livePaint)
                         native.restore()
                     }
