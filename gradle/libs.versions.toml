@@ -1,6 +1,9 @@
 [versions]
 # The recovered APK was built with AGP 8.5.2 / Kotlin 2.0.0 / Compose BOM 2024.06.00.
 # Upgraded to what Android Studio 2026.1 (Quail) expects.
+# The app's version, the same for the phone and Windows.
+appVersion = "1.1"
+appVersionCode = "2"
 agp = "9.4.1"
 kotlin = "2.4.20"
 coreKtx = "1.19.1"

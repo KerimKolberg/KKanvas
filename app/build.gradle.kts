@@ -15,8 +15,8 @@ android {
         minSdk = 31
         // Kept at 34 like the original; 35+ forces edge-to-edge layout.
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = libs.versions.appVersionCode.get().toInt()
+        versionName = libs.versions.appVersion.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

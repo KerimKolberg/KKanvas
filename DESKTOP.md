@@ -117,10 +117,15 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   closes. "Move originals to trash" uses the Recycle Bin, and "Recently deleted" restores from it
   or deletes for good. Smart crop uses Windows' own face detector (Windows.Media.FaceAnalysis,
   through a PowerShell helper that stays open), centring on the faces like the phone does.
-- **Phase 6 — done for the app.** `./gradlew :desktopApp:createDistributable` (with DESKTOP_JDK set
+- **Phase 6 — done.** `./gradlew :desktopApp:createDistributable` (with DESKTOP_JDK set
   to a JDK with jpackage) makes desktopApp/build/compose/binaries/main/app/kk-Squareify: the
   .exe, its own Java runtime and FFmpeg (copied in from tools/ffmpeg, not kept in git), with the
-  kk icon (tools/make-windows-icon.ps1). Not yet: an installer, and GitHub building the Windows app.
+  kk icon (tools/make-windows-icon.ps1). `:desktopApp:packageExe` makes the installer
+  (kk-Squareify-1.1.0.exe: installs for the user only, no administrator question, Start-menu entry,
+  desktop shortcut, uninstaller; the Compose plugin fetches WiX for it). The version comes from
+  gradle/libs.versions.toml (`appVersion`), shared with the phone app. GitHub (`windows.yml`) runs
+  the shared and Windows tests and builds the installer on every push (software encoding there:
+  no Radeon), keeps it for 3 days, and attaches it to a release for version tags (v1.2 …).
 - **Tests on Windows** (`./gradlew :desktopApp:test`): photos (EXIF, downscaling), FFmpeg and AMF,
   every video edit and video collages, the app end to end (saving, renaming, collages, carousels,
   panoramas, videos, restart), the Recycle Bin, screenshots of every screen

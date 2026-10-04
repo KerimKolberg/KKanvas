@@ -31,8 +31,8 @@ dependencies {
     testImplementation(compose.desktop.uiTestJUnit4)
 }
 
-/** FFmpeg for Windows (gyan.dev build with AMD AMF), kept outside the repository in tools/ffmpeg. */
-val ffmpegDir = rootDir.resolve("../tools/ffmpeg")
+/** FFmpeg for Windows (gyan.dev build with AMD AMF): FFMPEG_DIR, else tools/ffmpeg beside the repository. */
+val ffmpegDir = System.getenv("FFMPEG_DIR")?.let(::File) ?: rootDir.resolve("../tools/ffmpeg")
 
 /** FFmpeg goes into the app folder, next to the app; Compose finds it there at run time. */
 val appResources = layout.buildDirectory.dir("appResources")
@@ -51,11 +51,12 @@ compose.desktop {
         mainClass = "com.squareify.desktop.MainKt"
         // A full JDK (with jpackage) to run and package the app: DESKTOP_JDK, else the one running Gradle.
         System.getenv("DESKTOP_JDK")?.let { javaHome = it }
-        jvmArgs += listOf("-Dkk.ffmpeg.dir=${ffmpegDir.resolve("bin").path}", "-Xmx6g")
+        jvmArgs += listOf("-Xmx6g")
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "kk-Squareify"
-            packageVersion = "1.1.0"
+            // The phone's version (Windows installers want three numbers).
+            packageVersion = "${libs.versions.appVersion.get()}.0"
             description = "Pads, edits and builds Instagram posts"
             vendor = "kk"
             appResourcesRootDir.set(appResources)
@@ -66,6 +67,8 @@ compose.desktop {
                 menuGroup = "kk-Squareify"
                 shortcut = true
                 dirChooser = true
+                // Installs for this user only: no administrator question, updates in place.
+                perUserInstall = true
                 upgradeUuid = "6b1d3c3e-8f0a-4a8e-9d2b-5f3c1a7e2b90"
             }
         }
@@ -74,4 +77,10 @@ compose.desktop {
 
 tasks.matching { it.name in setOf("prepareAppResources", "createDistributable", "packageExe", "packageMsi", "run") }.configureEach {
     dependsOn(copyFfmpeg)
+}
+
+// Run from the source (gradlew :desktopApp:run): FFmpeg straight from its folder. The packaged app
+// finds the copy in its own folder instead.
+tasks.withType<JavaExec>().configureEach {
+    if (name == "run") systemProperty("kk.ffmpeg.dir", ffmpegDir.resolve("bin").path)
 }

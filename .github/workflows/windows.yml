@@ -1,0 +1,59 @@
+name: Windows app
+
+# Tests the Windows app and builds its installer on every push. A version tag (v1.2 …) also puts
+# the installer on a GitHub release.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: FFmpeg for Windows (gyan.dev build, with AMD AMF)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          Expand-Archive "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
+          $dir = Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Directory | Select-Object -First 1
+          "FFMPEG_DIR=$($dir.FullName)" >> $env:GITHUB_ENV
+
+      - name: Test, and build the installer
+        run: ./gradlew :shared:desktopTest :desktopApp:test :desktopApp:packageExe --console=plain
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-test-screens
+          path: desktopApp/build/screens
+          retention-days: 3
+
+      # Kept for a few days only: the installer is big, and the storage is shared with the APKs.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kk-Squareify-windows-installer
+          path: desktopApp/build/compose/binaries/main/exe/*.exe
+          retention-days: 3
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = Get-ChildItem desktopApp/build/compose/binaries/main/exe/*.exe | Select-Object -First 1
+          gh release create "${{ github.ref_name }}" $installer.FullName --title "kk-Squareify ${{ github.ref_name }}" --generate-notes

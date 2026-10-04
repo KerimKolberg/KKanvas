@@ -151,6 +151,12 @@ gradlew :desktopApp:createDistributable
 ```
 
 The app folder (kk-Squareify.exe, its Java runtime and FFmpeg) ends up in
-`desktopApp/build/compose/binaries/main/app/kk-Squareify/`. `gradlew :desktopApp:run` starts it
+`desktopApp/build/compose/binaries/main/app/kk-Squareify/`. `gradlew :desktopApp:packageExe`
+makes the installer, `desktopApp/build/compose/binaries/main/exe/kk-Squareify-<version>.exe`: it
+installs for the current user (no administrator question), with a Start-menu entry, a desktop
+shortcut and an uninstaller. GitHub Actions (`.github/workflows/windows.yml`) tests the Windows
+app and builds the installer on every push (kept 3 days); pushing a version tag such as `v1.2`
+also puts it on a GitHub release. The version is `appVersion` in `gradle/libs.versions.toml`,
+shared with the phone app. `gradlew :desktopApp:run` starts it
 straight from the source, and `gradlew :desktopApp:test` runs the Windows tests (photos, video,
 the app end to end, the Recycle Bin, and screenshots of every screen in `desktopApp/build/screens`).

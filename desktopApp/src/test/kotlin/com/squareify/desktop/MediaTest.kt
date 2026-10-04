@@ -59,7 +59,9 @@ class MediaTest {
     @Test
     fun ffmpegIsThereWithTheRadeonEncoder() {
         assertTrue(Ffmpeg.available)
-        assertEquals("h264_amf", Ffmpeg.h264Encoder)
+        // GitHub's build machines have no Radeon: software encoding there, AMF on the Z13.
+        val expected = if (System.getenv("CI") != null) "libx264" else "h264_amf"
+        assertEquals(expected, Ffmpeg.h264Encoder)
     }
 
     @Test
