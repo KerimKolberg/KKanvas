@@ -4,6 +4,7 @@ import com.squareify.app.MediaItem
 import com.squareify.app.PlatformContext
 import com.squareify.app.toMediaUri
 import kotlinx.coroutines.runBlocking
+import org.junit.Assume.assumeTrue
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -28,6 +29,8 @@ class RecycleBinTest {
 
     @Test
     fun anOriginalGoesToTheRecycleBinAndComesBack() = runBlocking {
+        // GitHub's build machines run as a service without a usable Recycle Bin.
+        assumeTrue(System.getenv("CI") == null)
         val original = TestMedia(dir).photo("kk-test-original-${System.nanoTime()}.jpg")
         val bytes = original.readBytes()
         val item = MediaItem(sourceUri = original.toMediaUri(), isVideo = false, displayName = original.name)
