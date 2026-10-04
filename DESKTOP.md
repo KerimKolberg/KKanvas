@@ -115,7 +115,8 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   wheel over a photo or sticker resizes it, Shift + wheel turns it (touch and pen arrive as one
   mouse pointer on Windows, so there's no pinch). Editors: Ctrl+Z / Ctrl+Y undo and redo, Esc
   closes. "Move originals to trash" uses the Recycle Bin, and "Recently deleted" restores from it
-  or deletes for good. No face detector on Windows yet: filled collage cells start centred.
+  or deletes for good. Smart crop uses Windows' own face detector (Windows.Media.FaceAnalysis,
+  through a PowerShell helper that stays open), centring on the faces like the phone does.
 - **Phase 6 — done for the app.** `./gradlew :desktopApp:createDistributable` (with DESKTOP_JDK set
   to a JDK with jpackage) makes desktopApp/build/compose/binaries/main/app/kk-Squareify: the
   .exe, its own Java runtime and FFmpeg (copied in from tools/ffmpeg, not kept in git), with the
@@ -139,7 +140,7 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
 | Saving | Pictures\kk-Squareify, same file names, overwrite on edit |
 | Move originals to the trash | Windows Recycle Bin |
 | Share / Post to Instagram | Share shows the saved file in Explorer; no "Post to Instagram" (Instagram has no Windows app to share to) |
-| Smart crop (faces) | Not yet: Android's face detector isn't on Windows; filled cells start centred |
+| Smart crop (faces) | Windows' own face detector instead of Android's; same rule (centre on the faces) |
 | Two-finger resize / turn | Mouse wheel resizes, Shift + wheel turns; touch and pen work like a mouse |
 
 ## Downloads this needs (each only with your OK)

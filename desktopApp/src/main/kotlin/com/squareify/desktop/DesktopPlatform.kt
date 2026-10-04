@@ -66,8 +66,8 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
 
     override fun loadPhoto(uri: MediaUri, maxSize: Int): PlatformBitmap = DesktopImages.decode(uri.toFile(), maxSize)
 
-    /** No face finder on Windows yet: filled collage cells start centred. */
-    override fun findFaces(photo: PlatformBitmap): Pair<Float, Float>? = null
+    /** Windows' own face detector, for smart crop in collages. */
+    override fun findFaces(photo: PlatformBitmap): Pair<Float, Float>? = WindowsFaces.focus(photo)
 
     override fun videoDurationMs(uri: MediaUri): Long? = try {
         Ffmpeg.probe(uri.toFile()).durationMs
