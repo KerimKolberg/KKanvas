@@ -125,7 +125,9 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   desktop shortcut, uninstaller; the Compose plugin fetches WiX for it). The version comes from
   gradle/libs.versions.toml (`appVersion`), shared with the phone app. GitHub (`windows.yml`) runs
   the shared and Windows tests and builds the installer on every push (software encoding there:
-  no Radeon), keeps it for 3 days, and attaches it to a release for version tags (v1.2 …).
+  no Radeon; the app itself picks AMF wherever it runs), keeps it for 3 days, and attaches it to a
+  release for version tags (v1.2 …). GitHub uses exactly the FFmpeg in tools/ffmpeg (9.0.2, checked
+  by checksum), so its installer matches one built on the PC.
 - **Tests on Windows** (`./gradlew :desktopApp:test`): photos (EXIF, downscaling), FFmpeg and AMF,
   every video edit and video collages, the app end to end (saving, renaming, collages, carousels,
   panoramas, videos, restart), the Recycle Bin, screenshots of every screen

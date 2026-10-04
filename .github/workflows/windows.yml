@@ -24,12 +24,23 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: FFmpeg for Windows (gyan.dev build, with AMD AMF)
+      # The same FFmpeg as in tools/ffmpeg on the PC, byte for byte, so the installers built here
+      # and there are the same. To update FFmpeg, change the version and both checksums together.
+      - name: FFmpeg for Windows (gyan.dev build with AMD AMF, pinned)
         shell: pwsh
+        env:
+          FFMPEG_VERSION: 9.0.2
+          FFMPEG_SHA256: 3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec
+          FFPROBE_SHA256: f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52
         run: |
-          Invoke-WebRequest https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          $url = "https://github.com/GyanD/codexffmpeg/releases/download/$env:FFMPEG_VERSION/ffmpeg-$env:FFMPEG_VERSION-essentials_build.zip"
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
           Expand-Archive "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
           $dir = Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Directory | Select-Object -First 1
+          foreach ($check in @(@("ffmpeg.exe", $env:FFMPEG_SHA256), @("ffprobe.exe", $env:FFPROBE_SHA256))) {
+            $hash = (Get-FileHash "$($dir.FullName)\bin\$($check[0])" -Algorithm SHA256).Hash.ToLower()
+            if ($hash -ne $check[1]) { throw "$($check[0]) isn't the expected build: $hash" }
+          }
           "FFMPEG_DIR=$($dir.FullName)" >> $env:GITHUB_ENV
 
       - name: Test, and build the installer
