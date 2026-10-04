@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 
 /**
  * A full-screen editor: ✕, the title and undo / redo on top, the controls scrolling below. It
@@ -56,11 +55,7 @@ fun EditorFrame(
 
     Dialog(
         onDismissRequest = ::requestClose, // the back button
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside = false,
-            decorFitsSystemWindows = false,
-        ),
+        properties = editorDialogProperties(),
     ) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(

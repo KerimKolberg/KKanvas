@@ -1,6 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -36,11 +35,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,12 +70,12 @@ fun EditSheet(
     val source = item.preview
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val platform = LocalAppPlatform.current
     // A video's length, for the trim slider.
     var durationMs by remember { mutableStateOf<Long?>(null) }
     if (item.isVideo) {
         LaunchedEffect(item.sourceUri) {
-            durationMs = withContext(Dispatchers.IO) { videoDurationMs(context, item.sourceUri) }
+            durationMs = withContext(platform.io) { platform.videoDurationMs(item.sourceUri) }
         }
     }
 
@@ -134,7 +133,7 @@ fun EditSheet(
         ) {
             shown?.let {
                 Image(
-                    bitmap = it.asImageBitmap(),
+                    bitmap = it.asImage(),
                     contentDescription = if (shown === source) "Original" else "Preview",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
@@ -213,12 +212,12 @@ fun EditSheet(
 }
 
 /** The colour of [bitmap] under [tap], for an image drawn with ContentScale.Fit into a box of [boxSize]. */
-private fun pickPixel(bitmap: Bitmap, boxSize: IntSize, tap: Offset): Int? {
+private fun pickPixel(bitmap: PlatformBitmap, boxSize: IntSize, tap: Offset): Int? {
     val scale = min(boxSize.width / bitmap.width.toFloat(), boxSize.height / bitmap.height.toFloat())
     val left = (boxSize.width - bitmap.width * scale) / 2
     val top = (boxSize.height - bitmap.height * scale) / 2
     val x = ((tap.x - left) / scale).toInt()
     val y = ((tap.y - top) / scale).toInt()
     if (x !in 0 until bitmap.width || y !in 0 until bitmap.height) return null
-    return bitmap.getPixel(x, y) or 0xFF000000.toInt()
+    return bitmap.pixelAt(x, y) or 0xFF000000.toInt()
 }

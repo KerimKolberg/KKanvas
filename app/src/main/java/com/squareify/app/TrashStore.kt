@@ -7,26 +7,13 @@ import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.util.concurrent.TimeUnit
-
-/** An original this app moved to the phone's trash after its result was saved. */
-data class TrashedOriginal(
-    val uri: Uri,
-    val name: String,
-    val isVideo: Boolean,
-    val trashedAt: Long,
-    /** Small JPEG kept by the app; the trashed file itself can't be read any more. */
-    val thumbnailPath: String?,
-) {
-    val expiresAt: Long get() = trashedAt + TrashStore.RETENTION_MS
-}
 
 /**
  * The app's "Recently deleted" list. Android deletes trashed media for good after 30 days, so
  * entries are dropped (with their thumbnails) after the same time.
  */
 object TrashStore {
-    val RETENTION_MS = TimeUnit.DAYS.toMillis(30)
+
     private const val PREFS_NAME = "trash"
     private const val KEY_ENTRIES = "entries"
 

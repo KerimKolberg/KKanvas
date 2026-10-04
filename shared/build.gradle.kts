@@ -48,6 +48,10 @@ kotlin {
             // Saved projects and looks are JSON; part of the shared code's API.
             api(libs.kotlinx.serialization.json)
         }
+        androidMain.dependencies {
+            // Pickers and the back button on the phone.
+            implementation(libs.androidx.activity.compose)
+        }
         val desktopTest by getting {
             dependencies {
                 // Skia's native library, so pictures can be drawn in the tests (Windows, or Linux on GitHub).

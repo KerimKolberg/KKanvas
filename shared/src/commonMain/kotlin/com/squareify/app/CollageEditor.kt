@@ -1,8 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
-import android.graphics.PointF
-import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -58,16 +55,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asAndroidColorFilter
-import androidx.compose.ui.graphics.asAndroidPath
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toAndroidRectF
-import androidx.compose.ui.graphics.toComposeRect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -80,7 +75,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CollageRenderer
-import com.squareify.app.processing.FaceFinder
 import com.squareify.app.processing.PhotoProcessor
 import com.squareify.app.processing.PhotoShapes
 import kotlinx.coroutines.Dispatchers
@@ -103,7 +97,7 @@ fun CollageEditor(
     var collage by history.part({ it.first }, { state, c -> state.copy(first = c) })
     var settings by history.part({ it.second }, { state, s -> state.copy(second = s) })
     var selectedCell by remember { mutableStateOf<Int?>(null) }
-    var rendered by remember { mutableStateOf<Bitmap?>(null) }
+    var rendered by remember { mutableStateOf<PlatformBitmap?>(null) }
     // A filled cell being moved or zoomed: drawn straight onto the preview, so it follows the
     // finger, until the full render catches up.
     var liveCell by remember { mutableStateOf<Int?>(null) }
@@ -161,18 +155,19 @@ fun CollageEditor(
     }
 
     // Smart crop: find the faces in each photo once, so filled cells keep them in view.
+    val platform = LocalAppPlatform.current
     LaunchedEffect(Unit) {
         val todo = collage.cells.filter { it.focusX == null && it.preview != null }
         if (todo.isEmpty()) return@LaunchedEffect
         val found = withContext(Dispatchers.Default) {
-            todo.associate { cell -> cell.sourceUri to (FaceFinder.focus(cell.preview!!) ?: PointF(0.5f, 0.5f)) }
+            todo.associate { cell -> cell.sourceUri to (platform.findFaces(cell.preview!!) ?: (0.5f to 0.5f)) }
         }
         // Applied to the cells as they are now: they may have been moved around meanwhile. Not an
         // undo step of its own: undo shouldn't take the faces away.
         val withFaces = collage.copy(
             cells = collage.cells.map { cell ->
                 val focus = found[cell.sourceUri]
-                if (focus != null && cell.focusX == null) cell.copy(focusX = focus.x, focusY = focus.y) else cell
+                if (focus != null && cell.focusX == null) cell.copy(focusX = focus.first, focusY = focus.second) else cell
             },
         )
         history.set(history.value.copy(first = withFaces), record = false)
@@ -284,7 +279,7 @@ fun CollageEditor(
  */
 @Composable
 private fun CollagePreview(
-    rendered: Bitmap?,
+    rendered: PlatformBitmap?,
     collage: Collage,
     settings: FrameSettings,
     selectedCell: Int?,
@@ -306,7 +301,6 @@ private fun CollagePreview(
     val outline = MaterialTheme.colorScheme.primary
     val textMeasurer = rememberTextMeasurer()
     val badgeText = MaterialTheme.typography.labelMedium.copy(color = Color.White)
-    val livePaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG) }
     // The cell being carried to another place, and where the finger is.
     var moving by remember { mutableStateOf<Int?>(null) }
     var movePosition by remember { mutableStateOf(Offset.Zero) }
@@ -372,7 +366,7 @@ private fun CollagePreview(
     ) {
         rendered?.let {
             Image(
-                bitmap = it.asImageBitmap(),
+                bitmap = it.asImage(),
                 contentDescription = "Collage preview",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
@@ -390,25 +384,26 @@ private fun CollagePreview(
                 if (liveIndex != null && live != null && live.fit == CellFit.FILL && liveSource != null && liveRect != null) {
                     val cellInBitmap = CollageRenderer.cellRects(collage, settings, rendered.width, rendered.height)[liveIndex]
                     val crop = CollageRenderer.cropFor(liveSource, cellInBitmap, live)
-                    val radius = PhotoProcessor.cornerRadius(settings.border, liveRect.toComposeRect())
-                    livePaint.colorFilter = PhotoProcessor.colorFilter(live.adjustments, settings.adjustments)?.asAndroidColorFilter()
-                    drawIntoCanvas { canvas ->
-                        val native = canvas.nativeCanvas
-                        native.save()
-                        native.clipPath(PhotoShapes.path(live.shape, liveRect.toComposeRect(), radius).asAndroidPath())
-                        val matrix = android.graphics.Matrix()
-                        matrix.setRectToRect(crop.toAndroidRectF(), liveRect, android.graphics.Matrix.ScaleToFit.FILL)
-                        native.drawBitmap(liveSource, matrix, livePaint)
-                        native.restore()
+                    val radius = PhotoProcessor.cornerRadius(settings.border, liveRect)
+                    val filter = PhotoProcessor.colorFilter(live.adjustments, settings.adjustments)
+                    val scaleX = liveRect.width / crop.width
+                    val scaleY = liveRect.height / crop.height
+                    clipPath(PhotoShapes.path(live.shape, liveRect, radius)) {
+                        withTransform({
+                            translate(liveRect.left - crop.left * scaleX, liveRect.top - crop.top * scaleY)
+                            scale(scaleX, scaleY, pivot = Offset.Zero)
+                        }) {
+                            drawImage(liveSource.asImage(), colorFilter = filter)
+                        }
                     }
                 }
                 // While carrying a photo: the cell it would go to, and the photo under the finger.
                 val carried = moving?.let { collage.cells.getOrNull(it) }
                 if (carried != null) {
-                    val target = rects.indexOfFirst { it.contains(movePosition.x, movePosition.y) }
+                    val target = rects.indexOfFirst { it.contains(movePosition) }
                         .takeIf { it >= 0 && it < collage.cells.size && it != moving }
                     target?.let { rects[it] }?.let { rect ->
-                        drawRect(outline.copy(alpha = 0.35f), Offset(rect.left, rect.top), Size(rect.width(), rect.height()))
+                        drawRect(outline.copy(alpha = 0.35f), Offset(rect.left, rect.top), Size(rect.width, rect.height))
                     }
                     carried.preview?.let { photo ->
                         val side = 84.dp.toPx()
@@ -416,7 +411,7 @@ private fun CollagePreview(
                         val w = photo.width * scale
                         val h = photo.height * scale
                         drawImage(
-                            image = photo.asImageBitmap(),
+                            image = photo.asImage(),
                             dstOffset = IntOffset((movePosition.x - w / 2).roundToInt(), (movePosition.y - h / 2).roundToInt()),
                             dstSize = IntSize(w.roundToInt(), h.roundToInt()),
                             alpha = 0.85f,
@@ -441,7 +436,7 @@ private fun CollagePreview(
                     drawRect(
                         color = outline,
                         topLeft = Offset(rect.left, rect.top),
-                        size = Size(rect.width(), rect.height()),
+                        size = Size(rect.width, rect.height),
                         style = Stroke(width = 3.dp.toPx()),
                     )
                 }
@@ -451,23 +446,23 @@ private fun CollagePreview(
 }
 
 /** How much the preview image is scaled to fit its box (ContentScale.Fit). */
-private fun fitScale(box: IntSize, bitmap: Bitmap): Float =
+private fun fitScale(box: IntSize, bitmap: PlatformBitmap): Float =
     min(box.width / bitmap.width.toFloat(), box.height / bitmap.height.toFloat())
 
 /** The cells' rectangles in the preview box's coordinates. */
-private fun screenCellRects(box: IntSize, bitmap: Bitmap, collage: Collage, settings: FrameSettings): List<RectF> {
+private fun screenCellRects(box: IntSize, bitmap: PlatformBitmap, collage: Collage, settings: FrameSettings): List<Rect> {
     val scale = fitScale(box, bitmap)
     val offsetX = (box.width - bitmap.width * scale) / 2
     val offsetY = (box.height - bitmap.height * scale) / 2
     return CollageRenderer.cellRects(collage, settings, bitmap.width, bitmap.height).map {
-        RectF(it.left * scale + offsetX, it.top * scale + offsetY, it.right * scale + offsetX, it.bottom * scale + offsetY)
+        Rect(it.left * scale + offsetX, it.top * scale + offsetY, it.right * scale + offsetX, it.bottom * scale + offsetY)
     }
 }
 
 /** Index of the photo cell under [offset], or null for the background or an empty cell. */
-private fun cellAt(offset: Offset, box: IntSize, bitmap: Bitmap, collage: Collage, settings: FrameSettings): Int? =
+private fun cellAt(offset: Offset, box: IntSize, bitmap: PlatformBitmap, collage: Collage, settings: FrameSettings): Int? =
     screenCellRects(box, bitmap, collage, settings)
-        .indexOfFirst { it.contains(offset.x, offset.y) }
+        .indexOfFirst { it.contains(offset) }
         .takeIf { it >= 0 && it < collage.cells.size }
 
 /** Fill/Fit, moving the photo to the next cell in any direction, and zoom. */

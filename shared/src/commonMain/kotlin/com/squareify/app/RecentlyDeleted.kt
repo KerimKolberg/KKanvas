@@ -1,6 +1,5 @@
 package com.squareify.app
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -31,13 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.util.concurrent.TimeUnit
 
-/** Originals the app moved to the phone's trash, with restore and delete-now. */
+/** Originals the app moved to the trash, with restore and delete-now. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecentlyDeletedSheet(
@@ -50,8 +48,7 @@ fun RecentlyDeletedSheet(
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Text("Recently deleted", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Originals moved to the phone's trash after their squared version was saved. " +
-                    "Android deletes them for good 30 days after they were moved.",
+                LocalAppPlatform.current.trash?.listExplanation.orEmpty(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -85,9 +82,10 @@ fun RecentlyDeletedSheet(
 
 @Composable
 private fun TrashRow(entry: TrashedOriginal, onRestore: () -> Unit, onDeleteForever: () -> Unit) {
-    val thumbnail = remember(entry.thumbnailPath) { entry.thumbnailPath?.let { BitmapFactory.decodeFile(it) } }
+    val platform = LocalAppPlatform.current
+    val thumbnail = remember(entry.thumbnailPath) { entry.thumbnailPath?.let { platform.trash?.loadThumbnail(it) } }
     // Whole days left, rounded down like Samsung's Recycle Bin shows it.
-    val daysLeft = ((entry.expiresAt - System.currentTimeMillis()) / TimeUnit.DAYS.toMillis(1))
+    val daysLeft = ((entry.expiresAt - platform.now()) / (24 * 60 * 60 * 1000L))
         .toInt().coerceAtLeast(0)
 
     Row(
@@ -102,7 +100,7 @@ private fun TrashRow(entry: TrashedOriginal, onRestore: () -> Unit, onDeleteFore
         ) {
             thumbnail?.let {
                 Image(
-                    bitmap = it.asImageBitmap(),
+                    bitmap = it.asImage(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
@@ -113,7 +111,8 @@ private fun TrashRow(entry: TrashedOriginal, onRestore: () -> Unit, onDeleteFore
         Column(modifier = Modifier.weight(1f)) {
             Text(entry.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                "${if (entry.isVideo) "Video" else "Photo"} · gone for good in $daysLeft day${if (daysLeft == 1) "" else "s"}",
+                "${if (entry.isVideo) "Video" else "Photo"} · " +
+                    if (platform.trash?.keepsForDays == null) "in the Recycle Bin" else "gone for good in $daysLeft day${if (daysLeft == 1) "" else "s"}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -45,7 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,7 +59,8 @@ fun MediaCard(
     onRemove: () -> Unit,
     onRenderVideo: () -> Unit,
     onShare: () -> Unit,
-    onPostToInstagram: () -> Unit,
+    /** Null where there's no Instagram app to post to (Windows). */
+    onPostToInstagram: (() -> Unit)?,
     onRetry: () -> Unit,
     selectionMode: Boolean,
     selected: Boolean,
@@ -84,7 +85,7 @@ fun MediaCard(
     ) {
         item.thumbnail?.let {
             Image(
-                bitmap = it.asImageBitmap(),
+                bitmap = it.asImage(),
                 contentDescription = item.displayName,
                 modifier = Modifier.fillMaxSize(),
                 // Fit, not crop, so tall formats show their padding.
@@ -245,7 +246,8 @@ private fun CardActions(
     onEdit: () -> Unit,
     onRemove: () -> Unit,
     onShare: () -> Unit,
-    onPostToInstagram: () -> Unit,
+    /** Null where there's no Instagram app to post to (Windows). */
+    onPostToInstagram: (() -> Unit)?,
     modifier: Modifier,
 ) {
     Row(
@@ -278,14 +280,16 @@ private fun CardActions(
                     )
                 }
                 DropdownMenu(expanded = shareMenu, onDismissRequest = { shareMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Post to Instagram") },
-                        leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
-                        onClick = {
-                            shareMenu = false
-                            onPostToInstagram()
-                        },
-                    )
+                    if (onPostToInstagram != null) {
+                        DropdownMenuItem(
+                            text = { Text("Post to Instagram") },
+                            leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                            onClick = {
+                                shareMenu = false
+                                onPostToInstagram()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Share…") },
                         leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },

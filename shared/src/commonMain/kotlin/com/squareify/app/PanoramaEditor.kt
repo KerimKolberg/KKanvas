@@ -1,7 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -48,17 +46,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
-import com.squareify.app.processing.loadDownscaledBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -67,21 +64,21 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PanoramaEditor(
-    sourceUri: Uri,
-    preview: Bitmap?,
+    sourceUri: MediaUri,
+    preview: PlatformBitmap?,
     initialPanorama: Panorama?,
     initialSettings: FrameSettings,
     isNew: Boolean,
     onDismiss: () -> Unit,
     onApply: (Panorama, FrameSettings) -> Unit,
 ) {
-    val context = LocalContext.current
+    val platform = LocalAppPlatform.current
     // Starts with the small preview, then a sharper copy for the slides.
     var source by remember { mutableStateOf(preview) }
     LaunchedEffect(sourceUri) {
-        withContext(Dispatchers.IO) {
+        withContext(platform.io) {
             try {
-                PhotoProcessor.loadDownscaledBitmap(context, sourceUri, PANORAMA_EDITOR_SIZE)
+                platform.loadPhoto(sourceUri, PANORAMA_EDITOR_SIZE)
             } catch (e: Exception) {
                 null
             }
@@ -95,7 +92,7 @@ fun PanoramaEditor(
     }
     var panorama by history.part({ it.first }, { state, p -> state.copy(first = p) })
     var settings by history.part({ it.second }, { state, s -> state.copy(second = s) })
-    var rendered by remember { mutableStateOf<Bitmap?>(null) }
+    var rendered by remember { mutableStateOf<PlatformBitmap?>(null) }
     var previewing by remember { mutableStateOf(false) }
 
     LaunchedEffect(source, panorama, settings) {
@@ -233,7 +230,7 @@ fun PanoramaEditor(
 
 /** The slides side by side, cut from the rendered strip, numbered. */
 @Composable
-private fun SlideStrip(rendered: Bitmap?, slides: Int, format: FrameFormat) {
+private fun SlideStrip(rendered: PlatformBitmap?, slides: Int, format: FrameFormat) {
     val aspect = format.widthRatio.toFloat() / format.heightRatio
     Box(
         modifier = Modifier
@@ -250,8 +247,8 @@ private fun SlideStrip(rendered: Bitmap?, slides: Int, format: FrameFormat) {
 }
 
 @Composable
-private fun SlideRow(rendered: Bitmap, slides: Int, aspect: Float) {
-    val image = remember(rendered) { rendered.asImageBitmap() }
+private fun SlideRow(rendered: PlatformBitmap, slides: Int, aspect: Float) {
+    val image = remember(rendered) { rendered.asImage() }
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),

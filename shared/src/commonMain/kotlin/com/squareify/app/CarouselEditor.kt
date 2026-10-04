@@ -7,10 +7,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.foundation.layout.BoxWithConstraints
-import android.graphics.Bitmap
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -67,14 +63,14 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -104,7 +100,7 @@ fun CarouselEditor(
     onDismiss: () -> Unit,
     onApply: (Carousel, FrameSettings) -> Unit,
 ) {
-    val context = LocalContext.current
+    val platform = LocalAppPlatform.current
     val scope = rememberCoroutineScope()
     val history = remember {
         EditHistory(initialCarousel to initialSettings.copy(format = initialSettings.format.takeIf { it in Panorama.FORMATS } ?: FrameFormat.PORTRAIT))
@@ -125,12 +121,12 @@ fun CarouselEditor(
     var template by remember { mutableStateOf<CarouselTemplate?>(null) }
 
     // More photos, added in the middle of the slide most in need of one.
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(pickLimit(Carousel.MAX_PHOTOS))) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+    val pickPhotos = rememberMediaPicker(PickKind.CAROUSEL) { uris ->
+        if (uris.isEmpty()) return@rememberMediaPicker
         loading = true
         scope.launch {
             val size = carouselPreviewSize(carousel.photos.size + uris.size)
-            val added = withContext(Dispatchers.IO) { uris.mapNotNull { loadCarouselPhoto(context, it, size) } }
+            val added = withContext(platform.io) { uris.mapNotNull { platform.loadCarouselPhoto(it, size) } }
             var photos = carousel.photos
             added.take(Carousel.MAX_PHOTOS - photos.size).forEach { photo ->
                 val counts = (0 until carousel.slides).map { s -> photos.count { slideOf(it.placement, carousel.slides) == s } }
@@ -275,7 +271,7 @@ fun CarouselEditor(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(
-                onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onClick = pickPhotos,
                 enabled = !loading && carousel.photos.size < Carousel.MAX_PHOTOS,
             ) {
                 Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
@@ -380,8 +376,8 @@ private fun CarouselCanvas(
     val canvasWidth = slideWidth * carousel.slides
 
     // Background, and text + logo, drawn as they'll be saved; the photos on top are live.
-    var background by remember { mutableStateOf<Bitmap?>(null) }
-    var overlay by remember { mutableStateOf<Bitmap?>(null) }
+    var background by remember { mutableStateOf<PlatformBitmap?>(null) }
+    var overlay by remember { mutableStateOf<PlatformBitmap?>(null) }
     val first = carousel.photos.firstOrNull()?.preview
     val pxHeight = with(density) { canvasHeight.roundToPx() }
     val pxWidth = (pxHeight / heightUnits * carousel.slides).toInt().coerceAtLeast(1)
@@ -459,7 +455,7 @@ private fun CarouselCanvas(
                 },
         ) {
             background?.let {
-                Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+                Image(it.asImage(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
             }
             carousel.photos.forEach { photo ->
                 val preview = photo.preview
@@ -491,7 +487,7 @@ private fun CarouselCanvas(
                 }
             }
             overlay?.let {
-                Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+                Image(it.asImage(), contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
             }
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val unit = size.width / carousel.slides
@@ -596,8 +592,8 @@ private fun StickerPalette(onPick: (StickerKind) -> Unit) {
 
 /** One photo on the live canvas: cropped as it will be, in its shape or its white print. */
 @Composable
-private fun CarouselPhotoView(photo: CarouselPhoto, preview: Bitmap, settings: FrameSettings, modifier: Modifier) {
-    val image = remember(preview) { preview.asImageBitmap() }
+private fun CarouselPhotoView(photo: CarouselPhoto, preview: PlatformBitmap, settings: FrameSettings, modifier: Modifier) {
+    val image = remember(preview) { preview.asImage() }
     val crop = remember(preview, photo.crop) { centerCrop(preview.width, preview.height, photo.crop) }
     val painter = remember(image, crop) {
         BitmapPainter(

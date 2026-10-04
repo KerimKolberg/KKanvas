@@ -1,6 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -49,7 +48,7 @@ import kotlinx.coroutines.withContext
 fun SwipePreviewDialog(
     slides: Int,
     aspect: Float,
-    renderSlide: (Int) -> Bitmap,
+    renderSlide: (Int) -> PlatformBitmap,
     warnings: List<String>,
     onDismiss: () -> Unit,
 ) {
@@ -62,7 +61,7 @@ fun SwipePreviewDialog(
         ) {
             Column(modifier = Modifier.align(Alignment.Center)) {
                 HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth()) { page ->
-                    val bitmap by produceState<Bitmap?>(null, page) {
+                    val bitmap by produceState<PlatformBitmap?>(null, page) {
                         value = withContext(Dispatchers.Default) { renderSlide(page) }
                     }
                     Box(
@@ -76,7 +75,7 @@ fun SwipePreviewDialog(
                             CircularProgressIndicator(color = Color.White)
                         } else {
                             Image(
-                                image.asImageBitmap(),
+                                image.asImage(),
                                 contentDescription = "Slide ${page + 1}",
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier.fillMaxSize(),

@@ -13,10 +13,10 @@ import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import java.util.Locale
 
 /** Trim, speed, sound and boomerang for one video; [durationMs] is null until it's known. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,6 +115,12 @@ private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean, onChang
 private fun speedLabel(speed: Float) = if (speed < 1f) "${(1 / speed).toInt()}×" else "${speed.toInt()}×"
 
 /** 83400 ms → "1:23.4". */
-private fun clock(ms: Long) = String.format(Locale.US, "%d:%04.1f", ms / 60_000, (ms % 60_000) / 1000f)
+private fun clock(ms: Long): String {
+    val tenths = ((ms % 60_000) / 100f).roundToInt()
+    return "${ms / 60_000}:${(tenths / 10).toString().padStart(2, '0')}.${tenths % 10}"
+}
 
-private fun seconds(ms: Long) = String.format(Locale.US, "%.1f s", ms / 1000f)
+private fun seconds(ms: Long): String {
+    val tenths = (ms / 100f).roundToInt()
+    return "${tenths / 10}.${tenths % 10} s"
+}

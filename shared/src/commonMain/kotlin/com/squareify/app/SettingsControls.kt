@@ -1,6 +1,5 @@
 package com.squareify.app
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,13 +53,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import com.squareify.app.processing.asPlatformBitmap
+import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.ColorUtils
+import com.squareify.app.processing.luminance
 import com.squareify.app.processing.PhotoProcessor
 import com.squareify.app.processing.textFontFamily
 import kotlinx.coroutines.Dispatchers
@@ -70,14 +76,14 @@ import kotlinx.coroutines.withContext
 enum class ColorSlot { PRIMARY, SECONDARY }
 
 private val PRESET_COLORS = listOf(
-    android.graphics.Color.WHITE,
-    android.graphics.Color.BLACK,
-    android.graphics.Color.parseColor("#F3F4F6"),
-    android.graphics.Color.parseColor("#1E293B"),
-    android.graphics.Color.parseColor("#EF4444"),
-    android.graphics.Color.parseColor("#3B82F6"),
-    android.graphics.Color.parseColor("#22C55E"),
-    android.graphics.Color.parseColor("#F59E0B"),
+    0xFFFFFFFF.toInt(),
+    0xFF000000.toInt(),
+    0xFFF3F4F6.toInt(),
+    0xFF1E293B.toInt(),
+    0xFFEF4444.toInt(),
+    0xFF3B82F6.toInt(),
+    0xFF22C55E.toInt(),
+    0xFFF59E0B.toInt(),
 )
 
 private val SELECTED_BORDER = Color(0xFF2563EB)
@@ -119,7 +125,7 @@ fun StyleControls(
     onChange: (FrameSettings) -> Unit,
     photoColors: List<Int> = emptyList(),
     onPickFromPhoto: ((ColorSlot) -> Unit)? = null,
-    sample: Bitmap? = null,
+    sample: PlatformBitmap? = null,
     /** False where a border makes no sense (panorama slides must join up). */
     showBorder: Boolean = true,
     /** True in the editors for one item: a caption belongs to that item, not to all new media. */
@@ -291,7 +297,7 @@ private fun BorderControls(settings: FrameSettings, onChange: (FrameSettings) ->
 }
 
 @Composable
-private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit, sample: Bitmap?) {
+private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings) -> Unit, sample: PlatformBitmap?) {
     val adjustments = settings.adjustments
     fun change(transform: Adjustments.() -> Adjustments) = onChange(settings.copy(adjustments = adjustments.transform()))
 
@@ -327,8 +333,8 @@ private fun AdjustmentControls(settings: FrameSettings, onChange: (FrameSettings
  * a tile that saves the current adjustments as a new look. Tapping a look sets all adjustments.
  */
 @Composable
-private fun LookPicker(current: Adjustments, sample: Bitmap?, onPick: (Adjustments) -> Unit) {
-    val context = LocalContext.current
+private fun LookPicker(current: Adjustments, sample: PlatformBitmap?, onPick: (Adjustments) -> Unit) {
+    val platform = LocalAppPlatform.current
     val looks = BUILT_IN_LOOKS + LooksStore.saved
     var saving by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Look?>(null) }
@@ -337,7 +343,7 @@ private fun LookPicker(current: Adjustments, sample: Bitmap?, onPick: (Adjustmen
         value = withContext(Dispatchers.Default) {
             val base = lookThumbnailBase(sample)
             looks.associateWith { look ->
-                PhotoProcessor.applyAdjustments(base.copy(Bitmap.Config.ARGB_8888, true), look.adjustments).asImageBitmap()
+                PhotoProcessor.applyAdjustments(copyOf(base), look.adjustments).asImage()
             }
         }
     }
@@ -377,7 +383,7 @@ private fun LookPicker(current: Adjustments, sample: Bitmap?, onPick: (Adjustmen
             confirmButton = {
                 TextButton(
                     onClick = {
-                        LooksStore.add(context, Look(name.trim(), current))
+                        LooksStore.add(platform.context, Look(name.trim(), current))
                         saving = false
                     },
                     enabled = name.isNotBlank(),
@@ -393,7 +399,7 @@ private fun LookPicker(current: Adjustments, sample: Bitmap?, onPick: (Adjustmen
             text = { Text("Photos already saved with it don't change.") },
             confirmButton = {
                 TextButton(onClick = {
-                    LooksStore.remove(context, look)
+                    LooksStore.remove(platform.context, look)
                     deleting = null
                 }) { Text("Delete") }
             },
@@ -462,27 +468,52 @@ private fun LookTile(
  * A small square to preview the looks on: the centre of [sample], or without a photo a made-up
  * scene (sky, warm horizon, skin tone, dark ground) that shows what each look does.
  */
-private fun lookThumbnailBase(sample: Bitmap?): Bitmap {
+private fun lookThumbnailBase(sample: PlatformBitmap?): ImageBitmap {
     val size = 150
-    val base = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(base)
-    val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+    val base = ImageBitmap(size, size)
+    val canvas = androidx.compose.ui.graphics.Canvas(base)
     if (sample != null) {
-        val side = minOf(sample.width, sample.height)
-        val left = (sample.width - side) / 2
-        val top = (sample.height - side) / 2
-        canvas.drawBitmap(sample, android.graphics.Rect(left, top, left + side, top + side), android.graphics.Rect(0, 0, size, size), paint)
+        val image = sample.asImage()
+        val side = minOf(image.width, image.height)
+        val left = (image.width - side) / 2
+        val top = (image.height - side) / 2
+        canvas.drawImageRect(image, IntOffset(left, top), IntSize(side, side), IntOffset.Zero, IntSize(size, size), Paint())
     } else {
-        paint.shader = android.graphics.LinearGradient(
-            0f, 0f, 0f, size.toFloat(),
-            intArrayOf(0xFF4A90D9.toInt(), 0xFFF2A65A.toInt(), 0xFFD9A38A.toInt(), 0xFF2F4F3A.toInt()),
-            floatArrayOf(0f, 0.45f, 0.65f, 1f),
-            android.graphics.Shader.TileMode.CLAMP,
+        val paint = Paint()
+        paint.shader = LinearGradientShader(
+            Offset.Zero,
+            Offset(0f, size.toFloat()),
+            listOf(Color(0xFF4A90D9), Color(0xFFF2A65A), Color(0xFFD9A38A), Color(0xFF2F4F3A)),
+            listOf(0f, 0.45f, 0.65f, 1f),
         )
         canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
     }
     return base
 }
+
+/** A copy of [image] that can be changed (the looks are applied to copies of one base). */
+private fun copyOf(image: ImageBitmap): PlatformBitmap =
+    ImageBitmap(image.width, image.height).also { androidx.compose.ui.graphics.Canvas(it).drawImage(image, Offset.Zero, Paint()) }.asPlatformBitmap()
+
+/** Android's Color.colorToHSV: hue 0–360, saturation and value 0–1. */
+private fun colorToHsv(color: Int): FloatArray {
+    val r = ((color shr 16) and 0xFF) / 255f
+    val g = ((color shr 8) and 0xFF) / 255f
+    val b = (color and 0xFF) / 255f
+    val max = maxOf(r, g, b)
+    val delta = max - minOf(r, g, b)
+    var hue = when {
+        delta == 0f -> 0f
+        max == r -> (g - b) / delta
+        max == g -> 2 + (b - r) / delta
+        else -> 4 + (r - g) / delta
+    } * 60
+    if (hue < 0) hue += 360
+    return floatArrayOf(hue, if (max == 0f) 0f else delta / max, max)
+}
+
+private fun hsvToColor(hue: Float, saturation: Float, value: Float): Int =
+    Color.hsv(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f)).toArgb()
 
 /** The caption: words, font, size, colour, backdrop and where it sits. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -710,7 +741,7 @@ private fun ColorSwatch(
         if (icon != null) {
             val tint = when {
                 color == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                ColorUtils.calculateLuminance(color) > 0.5 -> Color.Black
+                luminance(color) > 0.5 -> Color.Black
                 else -> Color.White
             }
             Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(18.dp), tint = tint)
@@ -721,11 +752,11 @@ private fun ColorSwatch(
 /** Hue / saturation / brightness picker for any background colour. */
 @Composable
 fun ColorPickerDialog(initial: Int, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
-    val hsv = remember { FloatArray(3).also { android.graphics.Color.colorToHSV(initial, it) } }
+    val hsv = remember { colorToHsv(initial) }
     var hue by remember { mutableFloatStateOf(hsv[0]) }
     var saturation by remember { mutableFloatStateOf(hsv[1]) }
     var brightness by remember { mutableFloatStateOf(hsv[2]) }
-    val color = android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness))
+    val color = hsvToColor(hue, saturation, brightness)
 
     AlertDialog(
         onDismissRequest = onDismiss,
