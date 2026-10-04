@@ -1,13 +1,19 @@
 package com.squareify.desktop
 
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.ScrollWheel
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import com.squareify.app.AppModel
 import com.squareify.app.Panorama
@@ -23,6 +29,7 @@ import org.jetbrains.skia.Image
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 /**
  * The screens as they look on Windows (at the Z13's maximized window size), saved as PNGs in
@@ -79,7 +86,23 @@ class ScreenshotTest {
                 waitUntil(timeoutMillis = 10_000) { model.carouselDraft != null }
                 waitForIdle()
                 save(onAllNodes(isRoot()).let { it[it.fetchSemanticsNodes().size - 1] }, "05-carousel")
-                runOnUiThread { model.dismissCarouselDraft() }
+                // The mouse wheel over the first photo makes it bigger; Shift + wheel turns it.
+                val before = model.carouselDraft!!.photos[0].placement
+                val editor = onAllNodes(isRoot()).let { it[it.fetchSemanticsNodes().size - 1] }
+                editor.performMouseInput {
+                    moveTo(Offset(200f, 520f))
+                    scroll(-3f)
+                }
+                waitForIdle()
+                editor.performKeyInput { keyDown(Key.ShiftLeft) }
+                editor.performMouseInput { scroll(4f, ScrollWheel.Horizontal) }
+                editor.performKeyInput { keyUp(Key.ShiftLeft) }
+                waitForIdle()
+                onNodeWithText("Create 3 slides").performClick()
+                waitUntil(timeoutMillis = 20_000) { model.items.any { it.carousel != null } }
+                val after = model.items.first { it.carousel != null }.carousel!!.photos[0].placement
+                assertTrue(after.width > before.width * 1.2f, "wheel resized ${before.width} → ${after.width}")
+                assertTrue(after.rotation != before.rotation, "Shift + wheel turned it: ${after.rotation}")
 
                 runOnUiThread { model.startCollageFromPicker(listOf(photos[2].toMediaUri())) }
                 waitUntil(timeoutMillis = 10_000) { model.panoramaDraft != null }

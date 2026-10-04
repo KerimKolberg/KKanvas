@@ -1,12 +1,5 @@
 package com.squareify.app
 
-import kotlin.math.abs
-import androidx.compose.material3.FilterChip
-import kotlin.math.roundToInt
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -19,6 +12,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +35,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -63,29 +58,36 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
-
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CarouselRenderer
 import com.squareify.app.processing.PhotoProcessor
 import com.squareify.app.processing.StickerRenderer
+import com.squareify.app.processing.asImage
 import com.squareify.app.processing.rotateAround
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.min
 
 /**
  * The carousel canvas: photos placed freely across slides, dragged, pinched to resize and turned
@@ -148,31 +150,50 @@ fun CarouselEditor(
             onDismiss()
         },
         onClose = onDismiss,
-    ) {
-        Spacer(Modifier.height(8.dp))
+        preview = {
+            Spacer(Modifier.height(8.dp))
 
-        CarouselCanvas(
-            carousel = carousel,
-            settings = settings,
-            selected = selected,
-            guides = guides,
-            onSelect = { selected = it },
-            onPlace = { index, snapped ->
-                update(index, snapped.placement)
-                guides = snapped
-            },
-            onGestureEnd = { guides = null },
-        )
-        Text(
-            "Drag photos and stickers anywhere, across the seams. Two fingers resize and turn them. " +
-                "Swipe an empty spot to scroll.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-        )
+            val canvas = @Composable { canvasHeight: Dp ->
+                CarouselCanvas(
+                    carousel = carousel,
+                    settings = settings,
+                    selected = selected,
+                    guides = guides,
+                    onSelect = { selected = it },
+                    onPlace = { index, snapped ->
+                        update(index, snapped.placement)
+                        guides = snapped
+                    },
+                    onGestureEnd = { guides = null },
+                    canvasHeight = canvasHeight,
+                )
+            }
+            if (LocalWideEditor.current) {
+                // Beside the controls: as tall as there's room for, all slides in view if they fit.
+                BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val fitting = minOf(maxHeight, maxWidth * heightUnits / carousel.slides)
+                    canvas(fitting.coerceIn(CANVAS_HEIGHT, maxOf(CANVAS_HEIGHT, maxHeight)))
+                }
+            } else {
+                canvas(CANVAS_HEIGHT)
+            }
+            Text(
+                if (isDesktop) {
+                    "Drag photos and stickers anywhere, across the seams. The mouse wheel resizes them, " +
+                        "Shift + wheel turns them. The wheel over an empty spot scrolls."
+                } else {
+                    "Drag photos and stickers anywhere, across the seams. Two fingers resize and turn them. " +
+                        "Swipe an empty spot to scroll."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+            )
+        },
+    ) {
         TemplatePicker(
             aspects = carousel.photos.map { it.aspect },
             heightUnits = heightUnits,
@@ -368,9 +389,9 @@ private fun CarouselCanvas(
     onSelect: (Int?) -> Unit,
     onPlace: (Int, Snapped) -> Unit,
     onGestureEnd: () -> Unit,
+    canvasHeight: Dp,
 ) {
     val density = LocalDensity.current
-    val canvasHeight = 260.dp
     val heightUnits = slideHeightUnits(settings.format)
     val slideWidth = canvasHeight / heightUnits
     val canvasWidth = slideWidth * carousel.slides
@@ -450,6 +471,34 @@ private fun CarouselCanvas(
                             }
                         } finally {
                             currentOnGestureEnd()
+                        }
+                    }
+                }
+                // A mouse or touchpad (Windows): the wheel over a photo or sticker resizes it,
+                // Shift + wheel turns it. Over an empty spot the wheel scrolls the slides.
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type != PointerEventType.Scroll) continue
+                            val change = event.changes.firstOrNull() ?: continue
+                            val c = currentCarousel
+                            val unit = size.width.toFloat() / c.slides
+                            val units = currentHeightUnits
+                            val layers = c.layers()
+                            val hit = carouselPhotoAt(layers, units, change.position.x / unit, change.position.y / unit) ?: continue
+                            // Windows sends Shift + wheel as a sideways scroll.
+                            val notches = change.scrollDelta.y + change.scrollDelta.x
+                            val placement = layers[hit].first
+                            val next = if (event.keyboardModifiers.isShiftPressed) {
+                                placement.copy(rotation = placement.rotation + notches * 5f)
+                            } else {
+                                placement.copy(width = (placement.width * 1.08f.pow(-notches)).coerceIn(0.08f, c.slides.toFloat()))
+                            }
+                            currentOnSelect(hit)
+                            currentOnPlace(hit, snapPlacement(next, layers[hit].second, units, c.slides, SNAP_DISTANCE.toPx() / unit))
+                            currentOnGestureEnd()
+                            change.consume()
                         }
                     }
                 },
@@ -733,3 +782,6 @@ private fun CropChoices(photo: CarouselPhoto, onChange: (CarouselPhoto) -> Unit)
         FilterChip(selected = photo.framed, onClick = { onChange(photo.copy(framed = !photo.framed)) }, label = { Text("Print border") })
     }
 }
+
+/** The canvas's height under the controls (on the phone). */
+private val CANVAS_HEIGHT = 260.dp

@@ -128,3 +128,29 @@ The original project was lost with an old laptop. Its source was recovered on
 function and variable names and UI text match the original. v1.1 moved to the
 current Android toolchain and added formats, remembered settings, sharing, retry
 and "Render all".
+
+## Windows app
+
+The same app for Windows (built for an ASUS ROG Flow Z13): the same screens, editors and drawing
+code as the phone (`shared/`), with Windows' own side in `desktopApp/` (files instead of the
+gallery, FFmpeg for video with the Radeon's encoder, the Recycle Bin). See DESKTOP.md for how
+it's built and what differs.
+
+- Add photos and videos with "Add Photos/Videos" or by dragging them in from Explorer.
+- Results go to Pictures\kk-Squareify and Videos\kk-Squareify; projects and settings are kept
+  in %APPDATA%\kk-Squareify.
+- In the carousel editor the mouse wheel resizes a photo or sticker, Shift + wheel turns it.
+  In every editor Ctrl+Z / Ctrl+Y undo and redo, Esc closes.
+
+Build it with a JDK that has jpackage (e.g. Temurin 21) and FFmpeg for Windows in
+`../tools/ffmpeg` (the gyan.dev build, which has AMD AMF):
+
+```
+set DESKTOP_JDK=C:\path\to\jdk-21
+gradlew :desktopApp:createDistributable
+```
+
+The app folder (kk-Squareify.exe, its Java runtime and FFmpeg) ends up in
+`desktopApp/build/compose/binaries/main/app/kk-Squareify/`. `gradlew :desktopApp:run` starts it
+straight from the source, and `gradlew :desktopApp:test` runs the Windows tests (photos, video,
+the app end to end, the Recycle Bin, and screenshots of every screen in `desktopApp/build/screens`).

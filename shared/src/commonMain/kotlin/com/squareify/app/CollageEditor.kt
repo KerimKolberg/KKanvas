@@ -58,11 +58,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -77,11 +76,12 @@ import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.CollageRenderer
 import com.squareify.app.processing.PhotoProcessor
 import com.squareify.app.processing.PhotoShapes
+import com.squareify.app.processing.asImage
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 /** Creates or edits a collage of photos and clips, with a live preview you can tap and drag on. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -173,6 +173,7 @@ fun CollageEditor(
         history.set(history.value.copy(first = withFaces), record = false)
     }
 
+    val index = selectedCell?.takeIf { it < collage.cells.size }
     EditorFrame(
         title = if (isNew) "New collage" else "Edit collage",
         history = history,
@@ -183,35 +184,36 @@ fun CollageEditor(
             onDismiss()
         },
         onClose = onDismiss,
+        preview = {
+            Spacer(Modifier.height(8.dp))
+
+            CollagePreview(
+                rendered = rendered,
+                collage = collage,
+                settings = settings,
+                selectedCell = selectedCell,
+                liveCell = liveCell,
+                onSelectCell = { selectedCell = it },
+                onPan = ::pan,
+                onDraggingChange = { dragging = it },
+                onSwap = ::swap,
+                modifier = if (LocalWideEditor.current) Modifier.weight(1f) else Modifier.height(300.dp),
+            )
+            Text(
+                when {
+                    index == null -> "Tap a photo or clip to adjust it. Hold and drag to swap two."
+                    collage.cells[index].fit == CellFit.FILL -> "Drag to reposition it. Hold, then drag onto another cell to swap."
+                    else -> "Hold, then drag it onto another cell to swap."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+            )
+        },
     ) {
-        Spacer(Modifier.height(8.dp))
-
-        CollagePreview(
-            rendered = rendered,
-            collage = collage,
-            settings = settings,
-            selectedCell = selectedCell,
-            liveCell = liveCell,
-            onSelectCell = { selectedCell = it },
-            onPan = ::pan,
-            onDraggingChange = { dragging = it },
-            onSwap = ::swap,
-        )
-        val index = selectedCell?.takeIf { it < collage.cells.size }
-        Text(
-            when {
-                index == null -> "Tap a photo or clip to adjust it. Hold and drag to swap two."
-                collage.cells[index].fit == CellFit.FILL -> "Drag to reposition it. Hold, then drag onto another cell to swap."
-                else -> "Hold, then drag it onto another cell to swap."
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-        )
-
         if (index != null) {
             CellControls(
                 cell = collage.cells[index],
@@ -288,6 +290,8 @@ private fun CollagePreview(
     onPan: (index: Int, dx: Float, dy: Float, previewWidth: Int, previewHeight: Int) -> Unit,
     onDraggingChange: (Boolean) -> Unit,
     onSwap: (from: Int, to: Int) -> Unit,
+    /** Its height: fixed under the controls, the free space beside them. */
+    modifier: Modifier,
 ) {
     // The gesture handler lives across recompositions; read the latest values through these.
     val currentRendered by rememberUpdatedState(rendered)
@@ -308,7 +312,7 @@ private fun CollagePreview(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(300.dp)
+            .then(modifier)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .pointerInput(Unit) {

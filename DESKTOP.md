@@ -96,6 +96,35 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   so the phone code around them hardly changed. The picture tests moved to `shared/commonTest`:
   all 85 shared tests pass on Windows and on the phone (as a separate test app), and the app's
   21 remaining on-device tests (video, saving, projects) pass too.
+- **Phase 3 — done.** The grid's logic is `AppModel` and every screen and editor is in
+  `shared/commonMain`; the phone keeps a thin `MainActivity` and `AndroidPlatform` (photo picker
+  links, MediaStore saving, the render service, Android's trash), Windows has `DesktopPlatform`.
+  Both implement `AppPlatform`; the few UI parts that differ (pickers, back button, sharing,
+  colours) are in `PlatformUi.kt` with a phone and a Windows version. On Windows: photos via
+  Skia, turned upright by their EXIF orientation (HEIC through FFmpeg); saving to the real
+  Pictures\kk-Squareify (OneDrive-moved folders found through the registry), overwriting the
+  earlier file on edit and adding " (1)" for taken names; projects, settings and looks in
+  %APPDATA%\kk-Squareify; drag and drop from Explorer.
+- **Phase 4 — done.** Videos: FFmpeg decodes (raw frames), the shared renderers draw each frame,
+  FFmpeg encodes with `h264_amf` on the Radeon (libx264 if AMF is missing), BT.709 limited range
+  and the phone's bitrate rule. Trim, speed (0.25–4×), mute, boomerang and video collages (30 fps,
+  as long as the longest clip, freeze or loop, sound from one clip) follow the phone's rules.
+  Results go to Videos\kk-Squareify.
+- **Phase 5 — done.** Wide windows: settings beside the grid (cards in as many columns as fit), and
+  in every editor the preview on the left with the controls on the right. Carousel: the mouse
+  wheel over a photo or sticker resizes it, Shift + wheel turns it (touch and pen arrive as one
+  mouse pointer on Windows, so there's no pinch). Editors: Ctrl+Z / Ctrl+Y undo and redo, Esc
+  closes. "Move originals to trash" uses the Recycle Bin, and "Recently deleted" restores from it
+  or deletes for good. No face detector on Windows yet: filled collage cells start centred.
+- **Phase 6 — done for the app.** `./gradlew :desktopApp:createDistributable` (with DESKTOP_JDK set
+  to a JDK with jpackage) makes desktopApp/build/compose/binaries/main/app/kk-Squareify: the
+  .exe, its own Java runtime and FFmpeg (copied in from tools/ffmpeg, not kept in git), with the
+  kk icon (tools/make-windows-icon.ps1). Not yet: an installer, and GitHub building the Windows app.
+- **Tests on Windows** (`./gradlew :desktopApp:test`): photos (EXIF, downscaling), FFmpeg and AMF,
+  every video edit and video collages, the app end to end (saving, renaming, collages, carousels,
+  panoramas, videos, restart), the Recycle Bin, screenshots of every screen
+  (desktopApp/build/screens) and the carousel's mouse wheel. On the phone, the shared tests'
+  test app also opens and closes every screen (`ScreensTest`).
 
 ## What's the same, what differs
 
@@ -109,9 +138,9 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
 | Video | FFmpeg + AMD AMF instead of MediaCodec; same frames drawn, same timing rules |
 | Saving | Pictures\kk-Squareify, same file names, overwrite on edit |
 | Move originals to the trash | Windows Recycle Bin |
-| Share / Post to Instagram | Open the folder, copy to clipboard, open instagram.com (Instagram has no Windows app to share to) |
-| Smart crop (faces) | Different detector (Android's isn't on Windows) |
-| Two-finger resize / turn | Handles and mouse wheel; pen works like a mouse |
+| Share / Post to Instagram | Share shows the saved file in Explorer; no "Post to Instagram" (Instagram has no Windows app to share to) |
+| Smart crop (faces) | Not yet: Android's face detector isn't on Windows; filled cells start centred |
+| Two-finger resize / turn | Mouse wheel resizes, Shift + wheel turns; touch and pen work like a mouse |
 
 ## Downloads this needs (each only with your OK)
 

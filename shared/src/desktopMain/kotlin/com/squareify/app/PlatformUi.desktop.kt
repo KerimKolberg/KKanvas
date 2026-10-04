@@ -78,3 +78,5 @@ actual fun editorDialogProperties(): DialogProperties = DialogProperties(
     usePlatformDefaultWidth = false,
     dismissOnClickOutside = false,
 )
+
+actual val isDesktop: Boolean = true

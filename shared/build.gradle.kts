@@ -61,6 +61,10 @@ kotlin {
         getByName("androidDeviceTest").dependencies {
             implementation(libs.androidx.test.runner)
             implementation(libs.androidx.test.ext.junit)
+            // The screens on the phone, in this test app of their own.
+            implementation(project.dependencies.platform(libs.androidx.compose.bom))
+            implementation(libs.androidx.ui.test.junit4)
+            implementation(libs.androidx.ui.test.manifest)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

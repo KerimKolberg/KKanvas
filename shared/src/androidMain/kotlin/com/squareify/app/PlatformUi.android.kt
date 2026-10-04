@@ -111,3 +111,5 @@ actual fun editorDialogProperties(): DialogProperties = DialogProperties(
     dismissOnClickOutside = false,
     decorFitsSystemWindows = false,
 )
+
+actual val isDesktop: Boolean = false

@@ -48,3 +48,6 @@ expect fun platformColorScheme(dark: Boolean): ColorScheme
 
 /** A dialog covering the whole screen that only the editor itself closes. */
 expect fun editorDialogProperties(): DialogProperties
+
+/** On Windows (mouse, keyboard) rather than the phone (touch); only for wording hints. */
+expect val isDesktop: Boolean

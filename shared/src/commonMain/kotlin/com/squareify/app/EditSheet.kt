@@ -18,11 +18,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -35,22 +35,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import com.squareify.app.processing.asImage
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.asImage
+import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.min
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,67 +98,68 @@ fun EditSheet(
         },
         onClose = onDismiss,
         scrollState = scrollState,
-    ) {
-        Spacer(Modifier.height(8.dp))
+        preview = {
+            Spacer(Modifier.height(8.dp))
 
-        val picking = pickingSlot != null
-        val shown = if (picking || showOriginal) source else rendered
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .pointerInput(picking, source) {
-                    if (picking && source != null) {
-                        detectTapGestures { offset ->
-                            val color = pickPixel(source, size, offset) ?: return@detectTapGestures
-                            settings = if (pickingSlot == ColorSlot.SECONDARY) {
-                                settings.copy(bgColor2 = color)
-                            } else {
-                                settings.copy(bgColor = color)
+            val picking = pickingSlot != null
+            val shown = if (picking || showOriginal) source else rendered
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (LocalWideEditor.current) Modifier.weight(1f) else Modifier.height(280.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .pointerInput(picking, source) {
+                        if (picking && source != null) {
+                            detectTapGestures { offset ->
+                                val color = pickPixel(source, size, offset) ?: return@detectTapGestures
+                                settings = if (pickingSlot == ColorSlot.SECONDARY) {
+                                    settings.copy(bgColor2 = color)
+                                } else {
+                                    settings.copy(bgColor = color)
+                                }
+                                pickingSlot = null
                             }
-                            pickingSlot = null
+                        } else {
+                            detectTapGestures(onPress = {
+                                showOriginal = true
+                                tryAwaitRelease()
+                                showOriginal = false
+                            })
                         }
-                    } else {
-                        detectTapGestures(onPress = {
-                            showOriginal = true
-                            tryAwaitRelease()
-                            showOriginal = false
-                        })
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            shown?.let {
-                Image(
-                    bitmap = it.asImage(),
-                    contentDescription = if (shown === source) "Original" else "Preview",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                shown?.let {
+                    Image(
+                        bitmap = it.asImage(),
+                        contentDescription = if (shown === source) "Original" else "Preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
             }
-        }
-        Text(
-            when {
-                picking -> "Tap the photo to pick a color"
-                showOriginal -> "Original"
-                source != null -> "Hold the preview to see the original"
-                else -> ""
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = 4.dp),
-        )
-        if (picking) {
-            TextButton(
-                onClick = { pickingSlot = null },
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            ) { Text("Cancel") }
-        }
-
+            Text(
+                when {
+                    picking -> "Tap the photo to pick a color"
+                    showOriginal -> "Original"
+                    source != null -> "Hold the preview to see the original"
+                    else -> ""
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = 4.dp),
+            )
+            if (picking) {
+                TextButton(
+                    onClick = { pickingSlot = null },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) { Text("Cancel") }
+            }
+        },
+    ) {
         Spacer(Modifier.height(8.dp))
         if (item.isVideo) {
             VideoControls(edit = settings.video, durationMs = durationMs, onChange = { settings = settings.copy(video = it) })

@@ -12,6 +12,9 @@ import com.squareify.app.processing.PhotoProcessor
 import com.squareify.app.processing.asImage
 import com.squareify.app.processing.initRenderers
 import com.squareify.app.processing.recycle
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,9 +24,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * The grid and everything done to it, the same on the phone and on Windows. On the phone it

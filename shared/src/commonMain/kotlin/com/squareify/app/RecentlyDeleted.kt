@@ -30,10 +30,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import com.squareify.app.processing.asImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.squareify.app.processing.asImage
 
 /** Originals the app moved to the trash, with restore and delete-now. */
 @OptIn(ExperimentalMaterial3Api::class)

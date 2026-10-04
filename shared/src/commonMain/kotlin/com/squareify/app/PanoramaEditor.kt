@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,16 +47,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import com.squareify.app.processing.asImage
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
-
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.squareify.app.processing.PanoramaRenderer
 import com.squareify.app.processing.PhotoProcessor
+import com.squareify.app.processing.asImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -98,7 +99,7 @@ fun PanoramaEditor(
     LaunchedEffect(source, panorama, settings) {
         val src = source ?: return@LaunchedEffect
         delay(30)
-        rendered = withContext(Dispatchers.Default) { renderPanoramaPreview(src, panorama, settings, SLIDE_PREVIEW_HEIGHT) }
+        rendered = withContext(Dispatchers.Default) { renderPanoramaPreview(src, panorama, settings, if (isDesktop) 2 * SLIDE_PREVIEW_HEIGHT else SLIDE_PREVIEW_HEIGHT) }
     }
 
     EditorFrame(
@@ -111,20 +112,30 @@ fun PanoramaEditor(
             onDismiss()
         },
         onClose = onDismiss,
+        preview = {
+            Spacer(Modifier.height(8.dp))
+
+            if (LocalWideEditor.current) {
+                // Beside the controls: the slides as large as the room allows.
+                BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val aspect = settings.format.widthRatio.toFloat() / settings.format.heightRatio
+                    val fitting = minOf(maxHeight - 8.dp, (maxWidth - 6.dp * (panorama.slides - 1)) / panorama.slides / aspect)
+                    SlideStrip(rendered = rendered, slides = panorama.slides, format = settings.format, slideHeight = fitting.coerceAtLeast(SLIDE_HEIGHT_DP.dp))
+                }
+            } else {
+                SlideStrip(rendered = rendered, slides = panorama.slides, format = settings.format)
+            }
+            Text(
+                "Swipe to see every slide. Post them together as one carousel, in this order.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+            )
+        },
     ) {
-        Spacer(Modifier.height(8.dp))
-
-        SlideStrip(rendered = rendered, slides = panorama.slides, format = settings.format)
-        Text(
-            "Swipe to see every slide. Post them together as one carousel, in this order.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-        )
-
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
             Text("Slides", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             FilledTonalIconButton(
@@ -230,24 +241,24 @@ fun PanoramaEditor(
 
 /** The slides side by side, cut from the rendered strip, numbered. */
 @Composable
-private fun SlideStrip(rendered: PlatformBitmap?, slides: Int, format: FrameFormat) {
+private fun SlideStrip(rendered: PlatformBitmap?, slides: Int, format: FrameFormat, slideHeight: Dp = SLIDE_HEIGHT_DP.dp) {
     val aspect = format.widthRatio.toFloat() / format.heightRatio
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(SLIDE_HEIGHT_DP.dp + 8.dp),
+            .height(slideHeight + 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (rendered == null) {
             CircularProgressIndicator()
         } else {
-            SlideRow(rendered, slides, aspect)
+            SlideRow(rendered, slides, aspect, slideHeight)
         }
     }
 }
 
 @Composable
-private fun SlideRow(rendered: PlatformBitmap, slides: Int, aspect: Float) {
+private fun SlideRow(rendered: PlatformBitmap, slides: Int, aspect: Float, slideHeight: Dp) {
     val image = remember(rendered) { rendered.asImage() }
     Row(
         modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -258,7 +269,7 @@ private fun SlideRow(rendered: PlatformBitmap, slides: Int, aspect: Float) {
             val right = rendered.width * (i + 1) / slides
             Box(
                 modifier = Modifier
-                    .height(SLIDE_HEIGHT_DP.dp)
+                    .height(slideHeight)
                     .aspectRatio(aspect)
                     .clip(RoundedCornerShape(6.dp)),
             ) {

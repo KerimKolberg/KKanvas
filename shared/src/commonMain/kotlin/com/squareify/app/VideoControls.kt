@@ -13,10 +13,10 @@ import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 /** Trim, speed, sound and boomerang for one video; [durationMs] is null until it's known. */
 @OptIn(ExperimentalMaterial3Api::class)
