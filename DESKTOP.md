@@ -83,7 +83,7 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   instead of Android's org.json — same file format, and files written by the old code load the
   same (tested). The shared tests run on the desktop JVM (`./gradlew :shared:desktopTest`);
   the phone's 64 on-device tests pass.
-- **Phase 2 — drawing shared; phone run pending.** All renderers (photos, frames, collages,
+- **Phase 2 — done.** All renderers (photos, frames, collages,
   panoramas, carousels, shapes, text, stickers, textures, watermark, blur, colour suggestions)
   are in `shared/commonMain/.../processing` on Compose graphics. What that API lacks is in
   `Graphics.kt` with a phone and a Windows version: shadows (Android's setShadowLayer; Skia's
@@ -94,7 +94,8 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   instead of the phone's system fonts, so text is the same on both — captions on the phone look
   slightly different from before. The renderers still take and return the platform's bitmap,
   so the phone code around them hardly changed. The picture tests moved to `shared/commonTest`:
-  all 85 shared tests pass on Windows; on the phone they run as a separate test app.
+  all 85 shared tests pass on Windows and on the phone (as a separate test app), and the app's
+  21 remaining on-device tests (video, saving, projects) pass too.
 
 ## What's the same, what differs
 
