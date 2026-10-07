@@ -1,6 +1,7 @@
 package com.squareify.app
 
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -12,10 +13,50 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.OutputStream
 
-/** Writes finished photos to Pictures/Squareify and videos to Movies/Squareify. */
+/** Writes finished photos to Pictures/kk-Squareify and videos to Movies/kk-Squareify. */
 object GallerySaver {
     private const val TAG = "GallerySaver"
-    private const val FOLDER = "Squareify"
+    private const val FOLDER = "kk-Squareify"
+    /** The folders' name before the app was called kk-Squareify. */
+    private const val OLD_FOLDER = "Squareify"
+
+    /**
+     * Moves results saved before the rename (Pictures/Squareify, Movies/Squareify) into the
+     * kk-Squareify folders. Only this app's own files; they keep their gallery entries, so saved
+     * projects still point at them. Nothing to do once they've moved.
+     */
+    fun moveOldFolders(context: Context) {
+        val resolver = context.contentResolver
+        val folders = listOf(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_PICTURES,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_MOVIES,
+        )
+        for ((collection, directory) in folders) {
+            val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, "$directory/$FOLDER") }
+            try {
+                resolver.query(
+                    collection,
+                    arrayOf(MediaStore.MediaColumns._ID),
+                    "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?",
+                    arrayOf("$directory/$OLD_FOLDER/", context.packageName),
+                    null,
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        val uri = ContentUris.withAppendedId(collection, c.getLong(0))
+                        try {
+                            resolver.update(uri, moved, null, null)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "could not move $uri", e)
+                        }
+                    }
+                }
+                // The old folder, if it's empty now.
+                File(Environment.getExternalStoragePublicDirectory(directory), OLD_FOLDER).delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "could not move the old $directory folder", e)
+            }
+        }
+    }
 
     fun saveImage(context: Context, bitmap: Bitmap, displayName: String, replace: Uri?): Uri? =
         save(

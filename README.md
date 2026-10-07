@@ -6,9 +6,9 @@ Android app that pads photos and videos to Instagram formats (1:1, 4:5, 3:4, 9:1
 with a solid-colour or blurred background, plus one-tap looks (and your own saved ones)
 and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignette.
 
-- Photos are saved to `Pictures/Squareify` as soon as they are added or edited.
+- Photos are saved to `Pictures/kk-Squareify` as soon as they are added or edited.
 - Videos are rendered on demand ("Render all" queues every waiting video) by a
-  foreground service (`RenderService`) and saved to `Movies/Squareify`, keeping the
+  foreground service (`RenderService`) and saved to `Movies/kk-Squareify`, keeping the
   original audio. If the audio can't be copied, the card shows a "No sound" badge.
   A video's edit sheet trims it, changes its speed (slow-mo to 4x), mutes it or makes it a
   boomerang.
@@ -77,7 +77,7 @@ Files are in `app/src/main/java/com/squareify/app/`, or for the shared code in
 | `processing/StripRenderer.kt`, `processing/CarouselRenderer.kt` | Drawing strips that span slides, one slide at a time |
 | `Looks.kt` | Built-in looks and the user's saved ones |
 | `MediaLoading.kt` | Loading photos/video frames, thumbnails, collage previews, output file names |
-| `GallerySaver.kt` | Saves to Pictures/ and Movies/Squareify, overwriting earlier saves |
+| `GallerySaver.kt` | Saves to Pictures/ and Movies/kk-Squareify (results saved before the rename move there), overwriting earlier saves |
 | `SettingsStore.kt` | Remembers the settings for new media |
 | `ProjectStore.kt`, `JsonCodec.kt` | Saves and restores the grid (JSON, every field optional) |
 | `RenderService.kt`, `RenderStateHolder.kt` | Background video rendering and its progress |

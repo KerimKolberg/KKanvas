@@ -10,7 +10,7 @@ a second app, the project becomes **Kotlin Multiplatform** with **Compose Multip
 runs the same Kotlin and the same Compose UI on Android and on Windows (desktop JVM):
 
 ```
-Squareify/
+kk-Squareify/
   shared/          Kotlin Multiplatform library: almost everything
     commonMain/    models, geometry, templates, looks, undo, projects (JSON),
                    all drawing (photos, collages, panoramas, carousels, text,
