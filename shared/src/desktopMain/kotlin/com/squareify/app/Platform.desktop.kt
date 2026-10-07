@@ -28,10 +28,10 @@ actual abstract class PlatformContext {
     abstract val dataDir: File
 }
 
-/** %APPDATA%\kk-Squareify. */
+/** %APPDATA%\kkanvas. */
 object DesktopContext : PlatformContext() {
     override val dataDir: File =
-        File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "kk-Squareify")
+        File(System.getenv("APPDATA") ?: System.getProperty("user.home"), "kkanvas")
 }
 
 /** Saved values in a .properties file, written in full on every change (they're small). */

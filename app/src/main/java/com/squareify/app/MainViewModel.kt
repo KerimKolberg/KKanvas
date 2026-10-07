@@ -12,7 +12,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val model = AppModel(platform, viewModelScope)
 
     init {
-        // Results saved before the app was renamed move into the kk-Squareify folders.
+        // Results saved under the app's earlier names move into the kkanvas folders.
         viewModelScope.launch(Dispatchers.IO) { GallerySaver.moveOldFolders(application) }
     }
 }

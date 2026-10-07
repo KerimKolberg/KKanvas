@@ -1,4 +1,4 @@
-# kk-Squareify roadmap
+# kkanvas roadmap
 
 ## Done
 - 1.1: formats (1:1, 4:5, 3:4, 9:16), remembered settings, share in/out, retry, render all,

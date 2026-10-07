@@ -53,7 +53,7 @@ class RecycleBinTest {
     @Test
     fun theAppsOwnResultsAreNotOffered() {
         System.setProperty("kk.output.dir", File(dir, "out").path)
-        val saved = File(dir, "out/Pictures/kk-Squareify/squared_x.jpg").apply { parentFile.mkdirs(); writeBytes(byteArrayOf(1)) }
+        val saved = File(dir, "out/Pictures/kkanvas/squared_x.jpg").apply { parentFile.mkdirs(); writeBytes(byteArrayOf(1)) }
         assertNull(bin.trashableUri(MediaItem(sourceUri = saved.toMediaUri(), isVideo = false, displayName = saved.name)))
     }
 

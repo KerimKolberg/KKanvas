@@ -13,17 +13,17 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.OutputStream
 
-/** Writes finished photos to Pictures/kk-Squareify and videos to Movies/kk-Squareify. */
+/** Writes finished photos to Pictures/kkanvas and videos to Movies/kkanvas. */
 object GallerySaver {
     private const val TAG = "GallerySaver"
-    private const val FOLDER = "kk-Squareify"
-    /** The folders' name before the app was called kk-Squareify. */
-    private const val OLD_FOLDER = "Squareify"
+    private const val FOLDER = "kkanvas"
+    /** The folders' names before the app was called kkanvas (first Squareify, then kk-Squareify). */
+    private val OLD_FOLDERS = listOf("Squareify", "kk-Squareify")
 
     /**
-     * Moves results saved before the rename (Pictures/Squareify, Movies/Squareify) into the
-     * kk-Squareify folders. Only this app's own files; they keep their gallery entries, so saved
-     * projects still point at them. Nothing to do once they've moved.
+     * Moves results saved under the app's earlier names (Pictures/Squareify, Pictures/kk-Squareify,
+     * and the same in Movies) into the kkanvas folders. Only this app's own files; they keep their
+     * gallery entries, so saved projects still point at them. Nothing to do once they've moved.
      */
     fun moveOldFolders(context: Context) {
         val resolver = context.contentResolver
@@ -31,14 +31,14 @@ object GallerySaver {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_PICTURES,
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI to Environment.DIRECTORY_MOVIES,
         )
-        for ((collection, directory) in folders) {
+        for ((collection, directory) in folders) for (old in OLD_FOLDERS) {
             val moved = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, "$directory/$FOLDER") }
             try {
                 resolver.query(
                     collection,
                     arrayOf(MediaStore.MediaColumns._ID),
                     "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?",
-                    arrayOf("$directory/$OLD_FOLDER/", context.packageName),
+                    arrayOf("$directory/$old/", context.packageName),
                     null,
                 )?.use { c ->
                     while (c.moveToNext()) {
@@ -51,9 +51,9 @@ object GallerySaver {
                     }
                 }
                 // The old folder, if it's empty now.
-                File(Environment.getExternalStoragePublicDirectory(directory), OLD_FOLDER).delete()
+                File(Environment.getExternalStoragePublicDirectory(directory), old).delete()
             } catch (e: Exception) {
-                Log.w(TAG, "could not move the old $directory folder", e)
+                Log.w(TAG, "could not move the old $directory/$old folder", e)
             }
         }
     }

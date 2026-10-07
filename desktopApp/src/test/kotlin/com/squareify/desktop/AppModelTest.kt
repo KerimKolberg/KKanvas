@@ -39,8 +39,8 @@ class AppModelTest {
     private val dir = Files.createTempDirectory("kk-app").toFile()
     private val media = TestMedia(File(dir, "in"))
     private val data = File(dir, "data")
-    private val pictures = File(dir, "out/Pictures/kk-Squareify")
-    private val videos = File(dir, "out/Videos/kk-Squareify")
+    private val pictures = File(dir, "out/Pictures/kkanvas")
+    private val videos = File(dir, "out/Videos/kkanvas")
     private val scopes = mutableListOf<CoroutineScope>()
 
     init {

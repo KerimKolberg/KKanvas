@@ -65,7 +65,7 @@ private fun AskForNotifications() {
     }
 }
 
-/** Media sent to us through the system share sheet ("Share → kk-Squareify"). */
+/** Media sent to us through the system share sheet ("Share → kkanvas"). */
 private fun Intent.sharedMediaUris(): List<Uri> = when (action) {
     Intent.ACTION_SEND ->
         listOfNotNull(IntentCompat.getParcelableExtra(this, Intent.EXTRA_STREAM, Uri::class.java))

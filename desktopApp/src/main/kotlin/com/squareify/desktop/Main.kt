@@ -38,6 +38,8 @@ import java.awt.datatransfer.DataFlavor
 import java.io.File
 
 fun main() {
+    // Data and results of kk-Squareify, as the app was called before, move to the kkanvas folders.
+    OldNames.moveToNewFolders()
     val platform = DesktopPlatform()
     // Lives as long as the app, on the window's thread, like the phone's ViewModel.
     val model = AppModel(platform, CoroutineScope(SupervisorJob() + Dispatchers.Main))

@@ -54,7 +54,7 @@ compose.desktop {
         jvmArgs += listOf("-Xmx6g")
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
-            packageName = "kk-Squareify"
+            packageName = "kkanvas"
             // The phone's version (Windows installers want three numbers).
             packageVersion = "${libs.versions.appVersion.get()}.0"
             description = "Pads, edits and builds Instagram posts"
@@ -64,7 +64,7 @@ compose.desktop {
             windows {
                 iconFile.set(project.file("icon.ico"))
                 menu = true
-                menuGroup = "kk-Squareify"
+                menuGroup = "kkanvas"
                 shortcut = true
                 dirChooser = true
                 // Installs for this user only: no administrator question, updates in place.

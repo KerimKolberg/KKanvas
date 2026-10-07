@@ -9,7 +9,7 @@ import androidx.compose.ui.window.DialogProperties
  * sharing, the back button, colours. Each has a phone and a Windows version.
  */
 
-const val APP_NAME = "kk-Squareify"
+const val APP_NAME = "kkanvas"
 
 /** What a picker is for: how many items, and whether videos may be picked. */
 enum class PickKind(val maxItems: Int, val videos: Boolean) {

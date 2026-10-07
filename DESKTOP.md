@@ -1,4 +1,4 @@
-# kk-Squareify for Windows — plan
+# kkanvas for Windows — plan
 
 Goal: a Windows app (.exe) for the ROG Flow Z13 (GZ302EA: Ryzen AI Max+ 395, Radeon 8060S, touch +
 pen) with exactly the phone app's functions, and the same results for the same settings.
@@ -10,7 +10,7 @@ a second app, the project becomes **Kotlin Multiplatform** with **Compose Multip
 runs the same Kotlin and the same Compose UI on Android and on Windows (desktop JVM):
 
 ```
-kk-Squareify/
+kkanvas/
   shared/          Kotlin Multiplatform library: almost everything
     commonMain/    models, geometry, templates, looks, undo, projects (JSON),
                    all drawing (photos, collages, panoramas, carousels, text,
@@ -50,7 +50,7 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
    commonMain on Compose graphics. Bundle the six caption fonts so text is identical on both.
    Phone tests prove nothing changed; the same tests run on Windows.
 3. **Windows app, photos** — window with the grid, settings panel, editors (shared UI), full-size
-   preview, saving to Pictures\kk-Squareify with the same names, saved projects in %APPDATA%,
+   preview, saving to Pictures\kkanvas with the same names, saved projects in %APPDATA%,
    add photos via the file picker or by dragging files in from Explorer. First .exe.
 4. **Windows video** — FFmpeg decodes, the shared code draws each frame, FFmpeg encodes on the
    Radeon with AMF (h264_amf; software x264 if AMF isn't there). Trim, speed, mute, boomerang,
@@ -59,7 +59,7 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
    keyboard shortcuts (Ctrl+Z / Ctrl+Y, Delete, Ctrl+S); handles to resize and turn photos with
    the pen or mouse (desktop Compose has limited two-finger gestures); smart crop with a face
    detector that works on Windows (and maybe the same one on the phone, for identical crops).
-6. **Packaging and CI** — kk-Squareify.exe with the kk icon (portable folder first, installer
+6. **Packaging and CI** — kkanvas.exe with the kk icon (portable folder first, installer
    optional), version shared with the phone app, GitHub builds the Windows app on every push.
 
 ## Progress
@@ -79,7 +79,7 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   video edits, looks, undo history, settings, saved projects. The phone-only types are aliases
   on Android (`MediaUri` = `Uri`, `PlatformBitmap` = `Bitmap`, `PlatformContext` = `Context`),
   settings go through a small `Preferences` interface (SharedPreferences on the phone, a
-  .properties file in %APPDATA%\kk-Squareify on Windows), and JSON is kotlinx.serialization's
+  .properties file in %APPDATA%\kkanvas on Windows), and JSON is kotlinx.serialization's
   instead of Android's org.json — same file format, and files written by the old code load the
   same (tested). The shared tests run on the desktop JVM (`./gradlew :shared:desktopTest`);
   the phone's 64 on-device tests pass.
@@ -102,14 +102,14 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   Both implement `AppPlatform`; the few UI parts that differ (pickers, back button, sharing,
   colours) are in `PlatformUi.kt` with a phone and a Windows version. On Windows: photos via
   Skia, turned upright by their EXIF orientation (HEIC through FFmpeg); saving to the real
-  Pictures\kk-Squareify (OneDrive-moved folders found through the registry), overwriting the
+  Pictures\kkanvas (OneDrive-moved folders found through the registry), overwriting the
   earlier file on edit and adding " (1)" for taken names; projects, settings and looks in
-  %APPDATA%\kk-Squareify; drag and drop from Explorer.
+  %APPDATA%\kkanvas; drag and drop from Explorer.
 - **Phase 4 — done.** Videos: FFmpeg decodes (raw frames), the shared renderers draw each frame,
   FFmpeg encodes with `h264_amf` on the Radeon (libx264 if AMF is missing), BT.709 limited range
   and the phone's bitrate rule. Trim, speed (0.25–4×), mute, boomerang and video collages (30 fps,
   as long as the longest clip, freeze or loop, sound from one clip) follow the phone's rules.
-  Results go to Videos\kk-Squareify.
+  Results go to Videos\kkanvas.
 - **Phase 5 — done.** Wide windows: settings beside the grid (cards in as many columns as fit), and
   in every editor the preview on the left with the controls on the right. Carousel: the mouse
   wheel over a photo or sticker resizes it, Shift + wheel turns it (touch and pen arrive as one
@@ -118,10 +118,10 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   or deletes for good. Smart crop uses Windows' own face detector (Windows.Media.FaceAnalysis,
   through a PowerShell helper that stays open), centring on the faces like the phone does.
 - **Phase 6 — done.** `./gradlew :desktopApp:createDistributable` (with DESKTOP_JDK set
-  to a JDK with jpackage) makes desktopApp/build/compose/binaries/main/app/kk-Squareify: the
+  to a JDK with jpackage) makes desktopApp/build/compose/binaries/main/app/kkanvas: the
   .exe, its own Java runtime and FFmpeg (copied in from tools/ffmpeg, not kept in git), with the
   kk icon (tools/make-windows-icon.ps1). `:desktopApp:packageExe` makes the installer
-  (kk-Squareify-1.1.0.exe: installs for the user only, no administrator question, Start-menu entry,
+  (kkanvas-1.2.0.exe: installs for the user only, no administrator question, Start-menu entry,
   desktop shortcut, uninstaller; the Compose plugin fetches WiX for it). The version comes from
   gradle/libs.versions.toml (`appVersion`), shared with the phone app. GitHub (`windows.yml`) runs
   the shared and Windows tests and builds the installer on every push (software encoding there:
@@ -144,7 +144,7 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
 | Undo / redo, swipe preview, saved projects, unsaved-changes question | Same code |
 | Photos in | File picker, drag and drop; JPEG/PNG/WebP via Skia, HEIC via FFmpeg |
 | Video | FFmpeg + AMD AMF instead of MediaCodec; same frames drawn, same timing rules |
-| Saving | Pictures\kk-Squareify, same file names, overwrite on edit |
+| Saving | Pictures\kkanvas, same file names, overwrite on edit |
 | Move originals to the trash | Windows Recycle Bin |
 | Share / Post to Instagram | Share shows the saved file in Explorer; no "Post to Instagram" (Instagram has no Windows app to share to) |
 | Smart crop (faces) | Windows' own face detector instead of Android's; same rule (centre on the faces) |
@@ -166,3 +166,12 @@ Every phase ends with the phone app unchanged for the user, all phone tests gree
   checking in phase 0, handles are the plan either way.
 - **AMF** depends on AMD's driver; software encoding is the fallback (slower, same result).
 - **HEIC** photos (Samsung can save those) need FFmpeg on Windows.
+
+## The name
+
+The app was renamed from kk-Squareify to **kkanvas** (version 1.2). Its folders are named after
+it everywhere: Pictures/kkanvas and Movies/kkanvas on the phone; Pictures\kkanvas, Videos\kkanvas,
+%APPDATA%\kkanvas and the install folder on Windows. Things saved under the old names move over
+on the first start (the phone's own results through the gallery, the Windows folders by renaming,
+with the saved projects' file paths updated). The internal id stays com.squareify.app, so phones
+keep updating the same app and its saved projects.

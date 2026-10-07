@@ -3,11 +3,11 @@ package com.squareify.desktop
 import java.io.File
 
 /**
- * Where saved results go: Pictures\kk-Squareify and Videos\kk-Squareify, in the user's real
+ * Where saved results go: Pictures\kkanvas and Videos\kkanvas, in the user's real
  * Pictures and Videos folders (which may have been moved, e.g. into OneDrive).
  */
 object WindowsFolders {
-    const val FOLDER = "kk-Squareify"
+    const val FOLDER = "kkanvas"
 
     /** For tests: everything under this folder instead. */
     private val override: File? get() = System.getProperty("kk.output.dir")?.let(::File)

@@ -1,14 +1,14 @@
-# kk-Squareify
+# kkanvas
 
-Formerly "Squareify". The launcher icon comes from `logo/kk-squareify-logo.jpg`.
+Formerly "Squareify", then "kk-Squareify"; results and data saved under those names move to the kkanvas folders on the first start. The launcher icon comes from `logo/kkanvas-logo.jpg`.
 
 Android app that pads photos and videos to Instagram formats (1:1, 4:5, 3:4, 9:16)
 with a solid-colour or blurred background, plus one-tap looks (and your own saved ones)
 and brightness, contrast, saturation, warmth, fade, sharpness, grain and vignette.
 
-- Photos are saved to `Pictures/kk-Squareify` as soon as they are added or edited.
+- Photos are saved to `Pictures/kkanvas` as soon as they are added or edited.
 - Videos are rendered on demand ("Render all" queues every waiting video) by a
-  foreground service (`RenderService`) and saved to `Movies/kk-Squareify`, keeping the
+  foreground service (`RenderService`) and saved to `Movies/kkanvas`, keeping the
   original audio. If the audio can't be copied, the card shows a "No sound" badge.
   A video's edit sheet trims it, changes its speed (slow-mo to 4x), mutes it or makes it a
   boomerang.
@@ -77,7 +77,7 @@ Files are in `app/src/main/java/com/squareify/app/`, or for the shared code in
 | `processing/StripRenderer.kt`, `processing/CarouselRenderer.kt` | Drawing strips that span slides, one slide at a time |
 | `Looks.kt` | Built-in looks and the user's saved ones |
 | `MediaLoading.kt` | Loading photos/video frames, thumbnails, collage previews, output file names |
-| `GallerySaver.kt` | Saves to Pictures/ and Movies/kk-Squareify (results saved before the rename move there), overwriting earlier saves |
+| `GallerySaver.kt` | Saves to Pictures/ and Movies/kkanvas (results saved before the rename move there), overwriting earlier saves |
 | `SettingsStore.kt` | Remembers the settings for new media |
 | `ProjectStore.kt`, `JsonCodec.kt` | Saves and restores the grid (JSON, every field optional) |
 | `RenderService.kt`, `RenderStateHolder.kt` | Background video rendering and its progress |
@@ -137,8 +137,8 @@ gallery, FFmpeg for video with the Radeon's encoder, the Recycle Bin). See DESKT
 it's built and what differs.
 
 - Add photos and videos with "Add Photos/Videos" or by dragging them in from Explorer.
-- Results go to Pictures\kk-Squareify and Videos\kk-Squareify; projects and settings are kept
-  in %APPDATA%\kk-Squareify.
+- Results go to Pictures\kkanvas and Videos\kkanvas; projects and settings are kept
+  in %APPDATA%\kkanvas.
 - In the carousel editor the mouse wheel resizes a photo or sticker, Shift + wheel turns it.
   In every editor Ctrl+Z / Ctrl+Y undo and redo, Esc closes.
 
@@ -150,9 +150,9 @@ set DESKTOP_JDK=C:\path\to\jdk-21
 gradlew :desktopApp:createDistributable
 ```
 
-The app folder (kk-Squareify.exe, its Java runtime and FFmpeg) ends up in
-`desktopApp/build/compose/binaries/main/app/kk-Squareify/`. `gradlew :desktopApp:packageExe`
-makes the installer, `desktopApp/build/compose/binaries/main/exe/kk-Squareify-<version>.exe`: it
+The app folder (kkanvas.exe, its Java runtime and FFmpeg) ends up in
+`desktopApp/build/compose/binaries/main/app/kkanvas/`. `gradlew :desktopApp:packageExe`
+makes the installer, `desktopApp/build/compose/binaries/main/exe/kkanvas-<version>.exe`: it
 installs for the current user (no administrator question), with a Start-menu entry, a desktop
 shortcut and an uninstaller. GitHub Actions (`.github/workflows/windows.yml`) tests the Windows
 app and builds the installer on every push (kept 3 days); pushing a version tag such as `v1.2`

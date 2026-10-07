@@ -263,8 +263,8 @@ private fun CardActions(
         if (item.isRendered) {
             // Green = saved; tapping it offers posting to Instagram or sharing elsewhere.
             val savedTo = when {
-                isDesktop -> if (item.isVideo) "Videos\\kk-Squareify" else "Pictures\\kk-Squareify"
-                else -> if (item.isVideo) "Movies/kk-Squareify" else "Pictures/kk-Squareify"
+                isDesktop -> if (item.isVideo) "Videos\\kkanvas" else "Pictures\\kkanvas"
+                else -> if (item.isVideo) "Movies/kkanvas" else "Pictures/kkanvas"
             }
             var shareMenu by remember { mutableStateOf(false) }
             Box {
