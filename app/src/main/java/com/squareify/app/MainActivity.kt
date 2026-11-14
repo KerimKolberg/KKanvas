@@ -44,6 +44,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Shared into the app while it's open: added to the grid that's already there. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.model.addMedia(intent.sharedMediaUris())
+    }
+
     override fun onDestroy() {
         viewModel.platform.trash.confirm = null
         super.onDestroy()

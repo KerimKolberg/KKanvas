@@ -88,6 +88,14 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
 
     private var saveSettingsJob: Job? = null
 
+    /** What a video looks like in a render: its settings and, for a collage, its cells (without pictures). */
+    private data class RenderedEdit(val settings: FrameSettings, val collage: CollageSpec?) {
+        constructor(item: MediaItem) : this(item.settings, item.collage?.toSpec())
+    }
+
+    /** The edit each video was last sent to render with. */
+    private val queuedRenders = mutableMapOf<String, RenderedEdit>()
+
     /** One full-resolution photo at a time: keeps memory in check and orders saves of the same item. */
     private val photoSaveMutex = Mutex()
 
@@ -100,16 +108,19 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
                 for ((id, state) in states) {
                     if (items.none { it.id == id }) continue
                     updateItem(id) {
+                        // Edited while it rendered: the file shows the earlier edit, so it isn't saved yet.
+                        val current = queuedRenders[id]?.let { queued -> queued == RenderedEdit(it) } ?: true
                         it.copy(
                             isProcessing = state.isProcessing,
                             progress = state.progress,
-                            isRendered = it.isRendered || state.isRendered,
+                            isRendered = if (state.isRendered) current else it.isRendered,
                             outputUri = state.outputUri ?: it.outputUri,
                             error = state.error,
                             warning = state.warning,
                         )
                     }
                     if (state.isRendered || state.error != null) {
+                        queuedRenders.remove(id)
                         platform.clearRenderState(id)
                     }
                 }
@@ -390,6 +401,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
     fun renderVideo(id: String) {
         val item = items.firstOrNull { it.id == id } ?: return
         updateItem(id) { it.copy(isProcessing = true, progress = 0f, error = null, warning = null) }
+        queuedRenders[id] = RenderedEdit(item)
         platform.renderVideo(item)
     }
 
@@ -504,7 +516,10 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
                         isRendered = current,
                     )
                 }
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Also when memory runs out on a huge photo: the card shows the error, the app goes on.
                 logWarning(TAG, "autoSavePhoto failed for ${item.displayName}", e)
                 updateItem(id) { it.copy(isProcessing = false, error = e.message ?: e.toString()) }
             }

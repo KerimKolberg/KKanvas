@@ -166,6 +166,27 @@ class AppModelTest {
     }
 
     @Test
+    fun aVideoEditedWhileItRendersIsNotSavedYet() {
+        val model = newModel()
+        val clip = media.clip("VID_0002.mp4", 640, 360, seconds = 1.5)
+        runBlocking(Dispatchers.Swing) { model.addMedia(listOf(clip.toMediaUri())) }
+        waitUntil("added") { model.items.size == 1 }
+        val item = model.items[0]
+        runBlocking(Dispatchers.Swing) {
+            model.renderVideo(item.id)
+            model.applyEdit(item.id, item.settings.copy(format = FrameFormat.PORTRAIT))
+        }
+        // The render of the square version ends; the card must ask for a new render, not say "saved".
+        waitUntil("first render over", seconds = 120) { !model.items[0].isProcessing }
+        assertFalse(model.items[0].isRendered)
+        runBlocking(Dispatchers.Swing) { model.renderVideo(item.id) }
+        waitUntil("rendered", seconds = 120) { model.items[0].isRendered }
+        val probe = Ffmpeg.probe(model.items[0].outputUri!!.toFile())
+        assertEquals(640 to 800, probe.width to probe.height)
+        assertEquals(1, videos.listFiles()!!.size)
+    }
+
+    @Test
     fun theGridAndSettingsComeBackAfterARestart() {
         val first = newModel()
         val photo = media.photo("keep.jpg")

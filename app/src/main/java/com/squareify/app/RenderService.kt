@@ -129,7 +129,10 @@ class RenderService : Service() {
                 // Shown as a badge on the card; the source's audio couldn't be copied.
                 warning = if (soundDropped) "No sound" else null,
             )
-        } catch (e: Exception) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Also when memory runs out: this video fails, the ones queued after it still render.
             Log.e(TAG, "render failed for ${request.displayName}", e)
             RenderStateHolder.markFailed(request.id, e.message ?: e.toString())
         }

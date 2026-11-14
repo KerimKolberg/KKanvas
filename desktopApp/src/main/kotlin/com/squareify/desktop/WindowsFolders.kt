@@ -12,8 +12,12 @@ object WindowsFolders {
     /** For tests: everything under this folder instead. */
     private val override: File? get() = System.getProperty("kk.output.dir")?.let(::File)
 
-    val pictures: File get() = File(override?.let { File(it, "Pictures") } ?: known("My Pictures", "Pictures"), FOLDER)
-    val videos: File get() = File(override?.let { File(it, "Videos") } ?: known("My Video", "Videos"), FOLDER)
+    /** Asked from Windows once: each lookup starts a program, and the screens ask for these often. */
+    private val knownPictures: File by lazy { known("My Pictures", "Pictures") }
+    private val knownVideos: File by lazy { known("My Video", "Videos") }
+
+    val pictures: File get() = File(override?.let { File(it, "Pictures") } ?: knownPictures, FOLDER)
+    val videos: File get() = File(override?.let { File(it, "Videos") } ?: knownVideos, FOLDER)
 
     /** A shell folder from the registry, or %USERPROFILE%\[fallback]. */
     private fun known(registryName: String, fallback: String): File {

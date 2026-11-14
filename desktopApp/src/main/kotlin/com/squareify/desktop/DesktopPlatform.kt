@@ -158,7 +158,8 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
             states.update {
                 it + (item.id to RenderState(isProcessing = false, progress = 1f, isRendered = true, outputUri = saved, warning = if (soundDropped) "No sound" else null))
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Also when memory runs out: this video fails, the ones queued after it still render.
             logWarning("Squareify", "render failed for ${item.displayName}", e)
             states.update { it + (item.id to RenderState(isProcessing = false, error = e.message ?: e.toString())) }
         } finally {
