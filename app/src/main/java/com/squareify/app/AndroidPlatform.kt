@@ -58,6 +58,8 @@ class AndroidPlatform(private val app: Application) : AppPlatform {
 
     override val renderStates = RenderStateHolder.states
 
+    override fun cancelRender(id: String) = RenderStateHolder.cancel(id)
+
     override fun clearRenderState(id: String) = RenderStateHolder.clear(id)
 
     override val trash = AndroidTrash(app)
@@ -90,11 +92,15 @@ class AndroidTrash(private val app: Application) : OriginalsTrash {
 
     override fun trashableUri(item: MediaItem): Uri? = mediaStoreUri(app, item.sourceUri, item.isVideo)
 
-    override suspend fun moveToTrash(uris: List<Uri>) = ask { MediaStore.createTrashRequest(app.contentResolver, uris, true) }
+    // Android does all of a request or none of it.
+    override suspend fun moveToTrash(uris: List<Uri>): List<Uri> =
+        uris.takeIf { ask { MediaStore.createTrashRequest(app.contentResolver, uris, true) } }.orEmpty()
 
-    override suspend fun restore(uris: List<Uri>) = ask { MediaStore.createTrashRequest(app.contentResolver, uris, false) }
+    override suspend fun restore(uris: List<Uri>): List<Uri> =
+        uris.takeIf { ask { MediaStore.createTrashRequest(app.contentResolver, uris, false) } }.orEmpty()
 
-    override suspend fun deleteForever(uris: List<Uri>) = ask { MediaStore.createDeleteRequest(app.contentResolver, uris) }
+    override suspend fun deleteForever(uris: List<Uri>): List<Uri> =
+        uris.takeIf { ask { MediaStore.createDeleteRequest(app.contentResolver, uris) } }.orEmpty()
 
     private suspend fun ask(create: () -> PendingIntent): Boolean {
         val show = confirm ?: return false

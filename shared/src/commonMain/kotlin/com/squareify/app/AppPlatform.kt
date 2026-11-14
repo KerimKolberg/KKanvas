@@ -48,6 +48,9 @@ interface AppPlatform {
     /** Starts rendering a video (or video collage) in the background; progress comes in [renderStates]. */
     fun renderVideo(item: MediaItem)
 
+    /** Stops a video's render, or takes it out of the queue: its item was removed from the grid. */
+    fun cancelRender(id: String) {}
+
     /** Videos being rendered, by [MediaItem.id]. */
     val renderStates: StateFlow<Map<String, RenderState>>
 
@@ -102,14 +105,14 @@ interface OriginalsTrash {
     /** The file to move to the trash for [item]'s original, or null if it can't be. */
     fun trashableUri(item: MediaItem): MediaUri?
 
-    /** Moves [uris] to the trash once the user agrees (the phone asks itself); true if done. */
-    suspend fun moveToTrash(uris: List<MediaUri>): Boolean
+    /** Moves [uris] to the trash once the user agrees (the phone asks itself); returns those that went. */
+    suspend fun moveToTrash(uris: List<MediaUri>): List<MediaUri>
 
-    /** Puts trashed files back; true if done. */
-    suspend fun restore(uris: List<MediaUri>): Boolean
+    /** Puts trashed files back; returns those that are back. */
+    suspend fun restore(uris: List<MediaUri>): List<MediaUri>
 
-    /** Deletes trashed files for good; true if done. */
-    suspend fun deleteForever(uris: List<MediaUri>): Boolean
+    /** Deletes trashed files for good; returns those that are gone. */
+    suspend fun deleteForever(uris: List<MediaUri>): List<MediaUri>
 
     fun loadEntries(): List<TrashedOriginal>
     fun saveEntries(entries: List<TrashedOriginal>)

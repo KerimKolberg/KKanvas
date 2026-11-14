@@ -135,4 +135,42 @@ class MediaTest {
         assertTrue(probe.hasAudio)
         assertEquals(30.0, probe.fps, 0.01)
     }
+
+    @Test
+    fun hdrVideosComeOutInNormalColours() {
+        // Colour bars as an HDR (HLG) clip, the way newer phones record.
+        val hdr = File(dir, "hdr.mp4")
+        val made = Ffmpeg.run(
+            listOf(
+                Ffmpeg.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "smptebars=s=640x360:d=1:r=30",
+                "-vf", "zscale=tin=bt709:t=arib-std-b67:pin=bt709:p=bt2020:min=bt709:m=bt2020nc,format=yuv420p10le",
+                "-c:v", "libx265", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", hdr.path,
+            ),
+        )
+        check(made.exitCode == 0) { made.errors }
+        val probe = Ffmpeg.probe(hdr)
+        assertTrue(probe.toSdr != null, "seen as HDR")
+        assertEquals(null, Ffmpeg.probe(media.clip("plain.mp4", seconds = 1.0)).toSdr)
+
+        // The yellow bar: bright and without blue. Unconverted it's a dull (123, 117, 46).
+        val out = File(dir, "hdr-out.mp4")
+        DesktopVideo.render(hdr, FrameSettings(format = FrameFormat.SQUARE), out) {}
+        for (frame in listOf(Ffmpeg.frameAt(hdr, 500, 2000, probe.toSdr), Ffmpeg.frameAt(out, 500, 2000))) {
+            val picture = DesktopImages.decode(frame, 2000)
+            val yellow = picture.pixel(130, picture.height / 2 - 80)
+            assertTrue(red(yellow) > 160 && green(yellow) > 150 && blue(yellow) < 40, "yellow is ${yellow.toUInt().toString(16)}")
+        }
+    }
+
+    @Test
+    fun aDamagedVideoFailsInsteadOfBeingSavedShort() {
+        // Cut off halfway, as after a broken copy or download.
+        val whole = media.clip("whole.mp4", 640, 360, seconds = 6.0, sound = false)
+        val start = File(dir, "start.mp4")
+        val moved = Ffmpeg.run(listOf(Ffmpeg.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", whole.path, "-c", "copy", "-movflags", "+faststart", start.path))
+        check(moved.exitCode == 0) { moved.errors }
+        val damaged = File(dir, "damaged.mp4").apply { writeBytes(start.readBytes().let { it.copyOf(it.size / 2) }) }
+        val failure = runCatching { DesktopVideo.render(damaged, FrameSettings(), File(dir, "damaged-out.mp4")) {} }.exceptionOrNull()
+        assertTrue(failure != null, "a video cut off halfway must not be saved as if it were whole")
+    }
 }

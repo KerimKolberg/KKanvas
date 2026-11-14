@@ -1,6 +1,10 @@
 package com.squareify.app
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 import java.util.UUID
 
@@ -73,13 +77,43 @@ actual fun PlatformContext.writeDataFile(name: String, text: String) {
     val file = File(dataDir, name)
     val temp = File(dataDir, "$name.tmp")
     temp.writeText(text)
-    if (!temp.renameTo(file)) {
-        file.delete()
-        temp.renameTo(file)
+    // Swapped in in one step, so a crash or power cut never leaves the file half-written or missing.
+    try {
+        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } catch (e: Exception) {
+        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+
+/**
+ * Where warnings and errors are also written (the app sets it when it starts; tests leave it
+ * unset), so there's something to look at after a problem: log.txt in the app's data folder,
+ * with the previous megabyte kept as log.old.txt.
+ */
+object DesktopLog {
+    @Volatile
+    var file: File? = null
+
+    private const val MAX_BYTES = 1_000_000L
+
+    @Synchronized
+    fun write(line: String, error: Throwable?) {
+        val log = file ?: return
+        try {
+            log.parentFile?.mkdirs()
+            if (log.length() > MAX_BYTES) {
+                Files.move(log.toPath(), File(log.parentFile, "log.old.txt").toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+            val time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+            log.appendText("$time $line\n" + (error?.stackTraceToString()?.plus("\n") ?: ""))
+        } catch (e: Exception) {
+            // Logging must never be what breaks the app.
+        }
     }
 }
 
 actual fun logWarning(tag: String, message: String, error: Throwable?) {
     System.err.println("W/$tag: $message")
     error?.printStackTrace()
+    DesktopLog.write("W/$tag: $message", error)
 }

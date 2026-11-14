@@ -18,10 +18,14 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
@@ -82,8 +86,17 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
     }
 
     fun removeSelected() {
-        items = items.filter { it.id !in selectedIds }
+        removeItems { it.id in selectedIds }
         clearSelection()
+    }
+
+    /** Takes items off the grid; a video among them that's rendering (or waiting to) is stopped. */
+    private fun removeItems(gone: (MediaItem) -> Boolean) {
+        items.filter { gone(it) && it.isVideo && it.isProcessing }.forEach {
+            queuedRenders.remove(it.id)
+            platform.cancelRender(it.id)
+        }
+        items = items.filterNot(gone)
     }
 
     private var saveSettingsJob: Job? = null
@@ -156,7 +169,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
         isProcessing = true
         val settings = globalSettings
         scope.launch {
-            val newItems = withContext(platform.io) { uris.mapNotNull { loadItem(it, settings) } }
+            val newItems = loadAll(uris) { loadItem(it, settings) }
             items = items + newItems
             isProcessing = false
             val failed = uris.size - newItems.size
@@ -166,6 +179,12 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
             // Photos are saved right away; videos wait for the user to tap render.
             newItems.filter { !it.isVideo }.forEach { autoSavePhoto(it.id) }
         }
+    }
+
+    /** Opens picked files a few at a time, in the order picked; those that can't be opened are left out. */
+    private suspend fun <T : Any> loadAll(uris: List<MediaUri>, load: (MediaUri) -> T?): List<T> = withContext(platform.io) {
+        val gate = Semaphore(LOAD_AT_ONCE)
+        uris.map { uri -> async { gate.withPermit { load(uri) } } }.awaitAll().filterNotNull()
     }
 
     private fun loadItem(uri: MediaUri, settings: FrameSettings): MediaItem? =
@@ -222,7 +241,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
         if (uris.isEmpty()) return
         isProcessing = true
         scope.launch {
-            val cells = withContext(platform.io) { uris.mapNotNull { loadCell(it) } }
+            val cells = loadAll(uris) { loadCell(it) }
             isProcessing = false
             if (cells.size < uris.size) {
                 platform.message("Couldn't open ${uris.size - cells.size} of ${uris.size} files")
@@ -255,7 +274,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
         isProcessing = true
         scope.launch {
             val size = carouselPreviewSize(uris.size)
-            val photos = withContext(platform.io) { uris.take(Carousel.MAX_PHOTOS).mapNotNull { platform.loadCarouselPhoto(it, size) } }
+            val photos = loadAll(uris.take(Carousel.MAX_PHOTOS)) { platform.loadCarouselPhoto(it, size) }
             isProcessing = false
             if (photos.size < uris.size) {
                 platform.message("Couldn't open ${uris.size - photos.size} of ${uris.size} photos")
@@ -415,7 +434,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
     }
 
     fun remove(id: String) {
-        items = items.filter { it.id != id }
+        removeItems { it.id == id }
     }
 
     /** Clears finished items from the list; the files themselves stay in the gallery. */
@@ -424,7 +443,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
     }
 
     fun removeAll() {
-        items = emptyList()
+        removeItems { true }
     }
 
     /**
@@ -437,9 +456,15 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
         if (targets.isEmpty()) return
         val uris = targets.map { trash.trashableUri(it)!! }
         scope.launch {
-            if (!trash.moveToTrash(uris)) return@launch
-            val itemIds = targets.map { it.id }
-            val trashed = itemIds.zip(uris).mapNotNull { (id, uri) -> items.firstOrNull { it.id == id }?.let { it to uri } }
+            // Those that went; where files go one by one (Windows), one may have stayed behind.
+            val moved = trash.moveToTrash(uris).toSet()
+            if (moved.isNotEmpty() && moved.size < uris.size) {
+                platform.message("Couldn't move ${uris.size - moved.size} of ${uris.size} originals to the trash")
+            }
+            if (moved.isEmpty()) return@launch
+            val movedTargets = targets.zip(uris).filter { (_, uri) -> uri in moved }
+            val itemIds = movedTargets.map { (item, _) -> item.id }
+            val trashed = movedTargets.mapNotNull { (item, uri) -> items.firstOrNull { it.id == item.id }?.let { it to uri } }
             items = items.map { if (it.id in itemIds) it.copy(originalTrashed = true) else it }
             selectedIds = selectedIds - itemIds.toSet()
             val now = platform.now()
@@ -457,8 +482,11 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
     fun restoreFromTrash(entries: List<TrashedOriginal>) {
         val trash = platform.trash ?: return
         scope.launch {
-            if (!trash.restore(entries.map { it.uri })) return@launch
-            val restored = entries.map { it.uri }.toSet()
+            val restored = trash.restore(entries.map { it.uri }).toSet()
+            if (restored.isNotEmpty() && restored.size < entries.size) {
+                platform.message("Couldn't put back ${entries.size - restored.size} of ${entries.size} originals")
+            }
+            if (restored.isEmpty()) return@launch
             items = items.map {
                 if (it.originalTrashed && trash.trashableUri(it) in restored) {
                     it.copy(originalTrashed = false)
@@ -466,14 +494,15 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
                     it
                 }
             }
-            removeFromTrash(entries)
+            removeFromTrash(entries.filter { it.uri in restored })
         }
     }
 
     fun deleteForever(entries: List<TrashedOriginal>) {
         val trash = platform.trash ?: return
         scope.launch {
-            if (trash.deleteForever(entries.map { it.uri })) removeFromTrash(entries)
+            val gone = trash.deleteForever(entries.map { it.uri }).toSet()
+            if (gone.isNotEmpty()) removeFromTrash(entries.filter { it.uri in gone })
         }
     }
 
@@ -661,6 +690,8 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
         const val PICK_HINT = "Pick one photo to split into carousel slides, or 2-9 photos and videos for a collage."
         /** Longest side a panorama is decoded at for saving its slides. */
         const val MAX_PANORAMA_DECODE = 12_000
+        /** Picked files opened side by side: quicker than one by one, without filling the memory. */
+        const val LOAD_AT_ONCE = 4
     }
 }
 

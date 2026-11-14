@@ -187,6 +187,23 @@ class AppModelTest {
     }
 
     @Test
+    fun removingAVideoStopsItsRender() {
+        val model = newModel()
+        val clip = media.clip("VID_0003.mp4", 1280, 720, seconds = 8.0)
+        runBlocking(Dispatchers.Swing) { model.addMedia(listOf(clip.toMediaUri())) }
+        waitUntil("added") { model.items.size == 1 }
+        val id = model.items[0].id
+        runBlocking(Dispatchers.Swing) {
+            model.renderVideo(id)
+            model.remove(id)
+        }
+        waitUntil("stopped") { model.platform.renderStates.value.isEmpty() }
+        Thread.sleep(1500)
+        assertTrue(videos.listFiles().isNullOrEmpty(), "nothing is saved for a removed video")
+        assertTrue(model.platform.renderStates.value.isEmpty())
+    }
+
+    @Test
     fun theGridAndSettingsComeBackAfterARestart() {
         val first = newModel()
         val photo = media.photo("keep.jpg")

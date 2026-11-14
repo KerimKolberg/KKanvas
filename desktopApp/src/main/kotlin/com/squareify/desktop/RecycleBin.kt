@@ -54,23 +54,26 @@ class RecycleBin(private val context: PlatformContext) : OriginalsTrash {
         return if (file.isFile && !own) item.sourceUri else null
     }
 
-    override suspend fun moveToTrash(uris: List<MediaUri>): Boolean = withContext(Dispatchers.IO) {
-        uris.map { it.toFile() }.filter { it.exists() }.all(::recycle)
+    override suspend fun moveToTrash(uris: List<MediaUri>): List<MediaUri> = withContext(Dispatchers.IO) {
+        uris.filter { uri ->
+            val file = uri.toFile()
+            !file.exists() || recycle(file)
+        }
     }
 
-    override suspend fun restore(uris: List<MediaUri>): Boolean = withContext(Dispatchers.IO) {
-        uris.all { uri ->
+    override suspend fun restore(uris: List<MediaUri>): List<MediaUri> = withContext(Dispatchers.IO) {
+        uris.filter { uri ->
             val original = uri.toFile()
-            val entry = recycled(original) ?: return@all original.exists()
-            if (original.exists()) return@all false
+            val entry = recycled(original) ?: return@filter original.exists()
+            if (original.exists()) return@filter false
             original.parentFile?.mkdirs()
             entry.data.renameTo(original).also { if (it) entry.info.delete() }
         }
     }
 
-    override suspend fun deleteForever(uris: List<MediaUri>): Boolean = withContext(Dispatchers.IO) {
-        uris.all { uri ->
-            val entry = recycled(uri.toFile()) ?: return@all true
+    override suspend fun deleteForever(uris: List<MediaUri>): List<MediaUri> = withContext(Dispatchers.IO) {
+        uris.filter { uri ->
+            val entry = recycled(uri.toFile()) ?: return@filter true
             entry.data.deleteRecursively().also { if (it) entry.info.delete() }
         }
     }

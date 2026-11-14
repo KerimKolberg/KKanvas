@@ -57,7 +57,7 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
         // As on the phone: a frame from the middle of the clip.
         return try {
             val probe = Ffmpeg.probe(file)
-            DesktopImages.decode(Ffmpeg.frameAt(file, probe.durationMs / 2, maxSize), maxSize, file.name)
+            DesktopImages.decode(Ffmpeg.frameAt(file, probe.durationMs / 2, maxSize, probe.toSdr), maxSize, file.name)
         } catch (e: Exception) {
             logWarning("Squareify", "no frame from ${file.name}", e)
             null
@@ -98,7 +98,12 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
         }
         // Written beside it and swapped in, so a half-written file never shows.
         val temp = File(folder, "${target.name}.part")
-        write(temp)
+        try {
+            write(temp)
+        } catch (e: Throwable) {
+            temp.delete()
+            throw e
+        }
         if (earlier != null && earlier != target) earlier.delete()
         if (!temp.renameTo(target)) {
             target.delete()
@@ -128,6 +133,16 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
     private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val savedVideos = mutableMapOf<String, MediaUri>()
 
+    /** Videos taken off the grid: not rendered, or stopped if they're being rendered. */
+    private val cancelled = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private class RenderCancelled : RuntimeException()
+
+    override fun cancelRender(id: String) {
+        cancelled += id
+        states.update { it - id }
+    }
+
     init {
         renderScope.launch {
             for (item in queue) renderOne(item)
@@ -140,16 +155,30 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
     }
 
     private fun renderOne(item: MediaItem) {
+        if (item.id in cancelled) return
         states.update { it + (item.id to (it[item.id] ?: RenderState()).copy(isProcessing = true, progress = 0f, error = null)) }
         val temp = File.createTempFile("kk-render-", ".mp4")
         try {
             require(Ffmpeg.available) { "FFmpeg is missing, so videos can't be made" }
-            val onProgress = { p: Float -> states.update { it + (item.id to (it[item.id] ?: RenderState()).copy(progress = p)) } }
+            val onProgress = { p: Float ->
+                if (item.id in cancelled) throw RenderCancelled()
+                states.update { it + (item.id to (it[item.id] ?: RenderState()).copy(progress = p)) }
+            }
             val collage = item.collage
-            val soundDropped = if (collage != null) {
-                DesktopVideo.renderCollage(collage, item.settings, temp, onProgress)
-            } else {
-                DesktopVideo.render(item.sourceUri.toFile(), item.settings, temp, onProgress)
+            val render = { encoder: String ->
+                if (collage != null) {
+                    DesktopVideo.renderCollage(collage, item.settings, temp, encoder, onProgress)
+                } else {
+                    DesktopVideo.render(item.sourceUri.toFile(), item.settings, temp, encoder, onProgress)
+                }
+            }
+            val soundDropped = try {
+                render(Ffmpeg.h264Encoder)
+            } catch (e: Ffmpeg.EncodingFailed) {
+                // The Radeon's encoder can refuse a video it took the test for (size, a busy card): once more in software.
+                if (Ffmpeg.h264Encoder == SOFTWARE_ENCODER) throw e
+                logWarning("Squareify", "${Ffmpeg.h264Encoder} failed for ${item.displayName}, encoding in software", e)
+                render(SOFTWARE_ENCODER)
             }
             // Collages are already named, e.g. "collage_20261001_120000".
             val name = if (collage != null) item.displayName else outputFileName(item.settings.format, item.displayName)
@@ -158,6 +187,8 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
             states.update {
                 it + (item.id to RenderState(isProcessing = false, progress = 1f, isRendered = true, outputUri = saved, warning = if (soundDropped) "No sound" else null))
             }
+        } catch (e: RenderCancelled) {
+            states.update { it - item.id }
         } catch (e: Throwable) {
             // Also when memory runs out: this video fails, the ones queued after it still render.
             logWarning("Squareify", "render failed for ${item.displayName}", e)
@@ -168,4 +199,8 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
     }
 
     override val trash = RecycleBin(context)
+
+    private companion object {
+        const val SOFTWARE_ENCODER = "libx264"
+    }
 }

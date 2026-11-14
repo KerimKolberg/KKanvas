@@ -25,11 +25,14 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.squareify.app.APP_NAME
 import com.squareify.app.AppModel
+import com.squareify.app.DesktopContext
+import com.squareify.app.DesktopLog
 import com.squareify.app.DesktopWindow
 import com.squareify.app.PHOTO_EXTENSIONS
 import com.squareify.app.SquareifyScreen
 import com.squareify.app.SquareifyTheme
 import com.squareify.app.VIDEO_EXTENSIONS
+import com.squareify.app.logWarning
 import com.squareify.app.toMediaUri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +41,9 @@ import java.awt.datatransfer.DataFlavor
 import java.io.File
 
 fun main() {
+    // Warnings and crashes go to %APPDATA%\kkanvas\log.txt, to look at after a problem.
+    DesktopLog.file = File(DesktopContext.dataDir, "log.txt")
+    Thread.setDefaultUncaughtExceptionHandler { thread, error -> logWarning("kkanvas", "crash on ${thread.name}", error) }
     // Data and results of kk-Squareify, as the app was called before, move to the kkanvas folders.
     OldNames.moveToNewFolders()
     val platform = DesktopPlatform()

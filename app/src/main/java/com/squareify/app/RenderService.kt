@@ -101,11 +101,15 @@ class RenderService : Service() {
         }
     }
 
+    private class RenderCancelled : RuntimeException()
+
     private suspend fun processOne(request: RenderRequest) {
+        if (RenderStateHolder.isCancelled(request.id)) return
         RenderStateHolder.markStarted(request.id)
+        val outFile = File(cacheDir, "render_${request.id}.mp4")
         try {
-            val outFile = File(cacheDir, "render_${request.id}.mp4")
             val onProgress = { p: Float ->
+                if (RenderStateHolder.isCancelled(request.id)) throw RenderCancelled()
                 RenderStateHolder.updateProgress(request.id, p)
                 updateNotification(request.displayName, p)
             }
@@ -129,12 +133,17 @@ class RenderService : Service() {
                 // Shown as a badge on the card; the source's audio couldn't be copied.
                 warning = if (soundDropped) "No sound" else null,
             )
+        } catch (e: RenderCancelled) {
+            RenderStateHolder.clear(request.id)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
             // Also when memory runs out: this video fails, the ones queued after it still render.
             Log.e(TAG, "render failed for ${request.displayName}", e)
             RenderStateHolder.markFailed(request.id, e.message ?: e.toString())
+        } finally {
+            // Still there after a failed or stopped render (a saved one has been moved to the gallery).
+            outFile.delete()
         }
     }
 

@@ -33,7 +33,7 @@ object DesktopVideo {
     private const val MAX_SIDE = 4096
 
     /** Renders one video into [output]; returns true if its sound couldn't be kept. */
-    fun render(source: File, settings: FrameSettings, output: File, onProgress: (Float) -> Unit): Boolean {
+    fun render(source: File, settings: FrameSettings, output: File, encoder: String = Ffmpeg.h264Encoder, onProgress: (Float) -> Unit): Boolean {
         val probe = Ffmpeg.probe(source)
         val (canvasW, canvasH) = PhotoProcessor.canvasSize(probe.width, probe.height, settings)
         val (width, height) = fitToEncoder(canvasW, canvasH)
@@ -47,8 +47,8 @@ object DesktopVideo {
         val boomerang = if (edit.boomerang) mutableListOf<ByteArray>() else null
         val forwardShare = if (boomerang != null) 0.6f else 0.9f
 
-        Ffmpeg.writer(output, width, height, fps, sound).use { writer ->
-            Ffmpeg.reader(source, probe.width, probe.height, fps, range.first, lengthMs, edit.speed).use { reader ->
+        Ffmpeg.writer(output, width, height, fps, sound, encoder).use { writer ->
+            Ffmpeg.reader(source, probe.width, probe.height, fps, range.first, lengthMs, edit.speed, toSdr = probe.toSdr).use { reader ->
                 var n = 0
                 while (true) {
                     val rgba = reader.next() ?: break
@@ -62,6 +62,7 @@ object DesktopVideo {
                     n++
                     onProgress(min(forwardShare, n.toFloat() / expected * forwardShare))
                 }
+                reader.checkComplete(expected, fps)
             }
             if (boomerang != null && boomerang.size > 1) {
                 // Back again: the same frames in reverse, without repeating the turning point.
@@ -77,7 +78,7 @@ object DesktopVideo {
     }
 
     /** Renders a video collage into [output]; returns true if the chosen clip's sound couldn't be kept. */
-    fun renderCollage(collage: Collage, settings: FrameSettings, output: File, onProgress: (Float) -> Unit): Boolean {
+    fun renderCollage(collage: Collage, settings: FrameSettings, output: File, encoder: String = Ffmpeg.h264Encoder, onProgress: (Float) -> Unit): Boolean {
         val files = collage.cells.map { it.sourceUri.toFile() }
         val probes = collage.cells.mapIndexed { i, cell -> if (cell.isVideo) Ffmpeg.probe(files[i]) else null }
         val durationMs = probes.maxOf { it?.durationMs ?: 0L }
@@ -101,13 +102,13 @@ object DesktopVideo {
                 val probe = probes[i]
                 if (probe != null) {
                     val (w, h) = readSize(probe.width, probe.height, rect.width, rect.height, cell.fit, cell.zoom)
-                    readers[i] = Ffmpeg.reader(files[i], w, h, COLLAGE_FPS, loop = loop)
+                    readers[i] = Ffmpeg.reader(files[i], w, h, COLLAGE_FPS, loop = loop, toSdr = probe.toSdr)
                 } else {
                     val needed = (max(rect.width, rect.height) * cell.zoom * 2).roundToInt().coerceIn(512, MAX_DECODE_DIMENSION)
                     photos[i] = DesktopImages.decode(files[i], needed)
                 }
             }
-            Ffmpeg.writer(output, width, height, COLLAGE_FPS, sound).use { writer ->
+            Ffmpeg.writer(output, width, height, COLLAGE_FPS, sound, encoder).use { writer ->
                 for (f in 0 until frameCount) {
                     collage.cells.indices.forEach { c ->
                         val reader = readers[c] ?: return@forEach
@@ -152,9 +153,9 @@ object DesktopVideo {
         return max(2, (width * scale).toInt() / 2 * 2) to max(2, (height * scale).toInt() / 2 * 2)
     }
 
-    /** A decoded RGBA frame as a picture the renderers can draw from. */
+    /** A decoded RGBA frame as a picture the renderers can draw from (Skia takes its own copy of [rgba]). */
     private fun frameFrom(rgba: ByteArray, width: Int, height: Int): Bitmap = Bitmap().apply {
-        installPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL), rgba.copyOf(), width * 4)
+        installPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL), rgba, width * 4)
     }
 
     private val rgbaInfo = { w: Int, h: Int -> ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL) }

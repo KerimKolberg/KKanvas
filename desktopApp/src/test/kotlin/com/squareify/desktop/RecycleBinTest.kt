@@ -36,18 +36,18 @@ class RecycleBinTest {
         val item = MediaItem(sourceUri = original.toMediaUri(), isVideo = false, displayName = original.name)
         assertNotNull(bin.trashableUri(item))
 
-        assertTrue(bin.moveToTrash(listOf(original.toMediaUri())))
+        assertEquals(1, bin.moveToTrash(listOf(original.toMediaUri())).size)
         assertFalse(original.exists())
         assertNull(bin.trashableUri(item), "gone from its folder")
 
-        assertTrue(bin.restore(listOf(original.toMediaUri())))
+        assertEquals(1, bin.restore(listOf(original.toMediaUri())).size)
         assertTrue(original.exists())
         assertTrue(bytes.contentEquals(original.readBytes()))
 
         // Out again, then deleted for good: nothing of it stays in the Recycle Bin.
-        assertTrue(bin.moveToTrash(listOf(original.toMediaUri())))
-        assertTrue(bin.deleteForever(listOf(original.toMediaUri())))
-        assertFalse(bin.restore(listOf(original.toMediaUri())) && original.exists())
+        assertEquals(1, bin.moveToTrash(listOf(original.toMediaUri())).size)
+        assertEquals(1, bin.deleteForever(listOf(original.toMediaUri())).size)
+        assertFalse(bin.restore(listOf(original.toMediaUri())).isNotEmpty() && original.exists())
     }
 
     @Test

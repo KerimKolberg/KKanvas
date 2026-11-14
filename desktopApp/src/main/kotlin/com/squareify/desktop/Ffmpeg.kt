@@ -41,15 +41,21 @@ object Ffmpeg {
 
     class Result(val exitCode: Int, val output: ByteArray, val errors: String)
 
-    /** Runs [command] to the end, collecting what it prints. */
+    /** Runs [command] to the end (stopped after [timeoutSeconds]), collecting what it prints. */
     fun run(command: List<String>, timeoutSeconds: Long = 600): Result {
         val process = ProcessBuilder(command).start()
         val errors = StringBuilder()
-        val errorReader = Thread { process.errorStream.bufferedReader().forEachLine { errors.appendLine(it) } }.apply { start() }
-        val output = process.inputStream.readBytes()
-        if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) process.destroyForcibly()
+        var output = ByteArray(0)
+        // Both read beside the wait, so a program that hangs is stopped when its time is up.
+        val errorReader = Thread { runCatching { process.errorStream.bufferedReader().forEachLine { errors.appendLine(it) } } }.apply { start() }
+        val outputReader = Thread { runCatching { output = process.inputStream.readBytes() } }.apply { start() }
+        if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+        outputReader.join(2000)
         errorReader.join(2000)
-        return Result(process.exitValue(), output, errors.toString())
+        return Result(if (process.isAlive) -1 else process.exitValue(), output, errors.toString())
     }
 
     /** What ffprobe tells about a video. */
@@ -60,13 +66,29 @@ object Ffmpeg {
         val width: Int,
         val height: Int,
         val hasAudio: Boolean,
+        /** For an HDR video (HDR10, HLG, Dolby Vision): the filters that bring it to normal colours. */
+        val toSdr: String? = null,
     )
+
+    /**
+     * HDR to normal colours, as the phone's decoder does it: without this an HDR clip comes out
+     * dull and grey. [transfer] is the stream's colour transfer as ffprobe names it.
+     */
+    private fun toSdrFilters(transfer: String): String? {
+        // The brightness "white" is recorded at: 203 nits for HDR10 (PQ), 100 for HLG.
+        val white = when (transfer) {
+            "smpte2084" -> 203
+            "arib-std-b67" -> 100
+            else -> return null
+        }
+        return "zscale=t=linear:npl=$white,format=gbrpf32le,zscale=p=bt709,tonemap=mobius:desat=0,zscale=t=bt709,format=gbrp"
+    }
 
     fun probe(file: File): Probe {
         val result = run(
             listOf(
                 ffprobe, "-v", "error", "-show_entries",
-                "format=duration:stream=codec_type,width,height,avg_frame_rate,r_frame_rate:stream_side_data=rotation:stream_tags=rotate",
+                "format=duration:stream=codec_type,width,height,avg_frame_rate,r_frame_rate,color_transfer:stream_side_data=rotation:stream_tags=rotate",
                 "-of", "default=noprint_wrappers=0", file.path,
             ),
             timeoutSeconds = 60,
@@ -80,6 +102,7 @@ object Ffmpeg {
         var hasAudio = false
         var duration = 0.0
         var type = ""
+        var transfer = ""
         text.lineSequence().map { it.trim() }.forEach { line ->
             val key = line.substringBefore('=')
             val value = line.substringAfter('=', "")
@@ -93,6 +116,7 @@ object Ffmpeg {
                 "height" -> if (type == "video" && height == 0) height = value.toIntOrNull() ?: 0
                 "avg_frame_rate" -> if (type == "video") rate(value)?.let { fps = it }
                 "rotation", "TAG:rotate" -> if (type == "video") rotation = value.toDoubleOrNull()?.toInt() ?: rotation
+                "color_transfer" -> if (type == "video" && transfer.isEmpty()) transfer = value
                 "duration" -> value.toDoubleOrNull()?.let { if (it > duration) duration = it }
             }
         }
@@ -104,6 +128,7 @@ object Ffmpeg {
             width = if (turned) height else width,
             height = if (turned) width else height,
             hasAudio = hasAudio,
+            toSdr = toSdrFilters(transfer),
         )
     }
 
@@ -115,12 +140,13 @@ object Ffmpeg {
         return if (n > 0 && d > 0) n / d else null
     }
 
-    /** One frame at [timeMs] as PNG bytes, longer side at most [maxSize]. */
-    fun frameAt(file: File, timeMs: Long, maxSize: Int): ByteArray {
+    /** One frame at [timeMs] as PNG bytes, longer side at most [maxSize]; [toSdr] for an HDR video ([Probe.toSdr]). */
+    fun frameAt(file: File, timeMs: Long, maxSize: Int, toSdr: String? = null): ByteArray {
+        val scale = "scale='min($maxSize,iw)':'min($maxSize,ih)':force_original_aspect_ratio=decrease"
         val result = run(
             listOf(
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-ss", seconds(timeMs), "-i", file.path,
-                "-frames:v", "1", "-vf", "scale='min($maxSize,iw)':'min($maxSize,ih)':force_original_aspect_ratio=decrease",
+                "-frames:v", "1", "-vf", listOfNotNull(scale, toSdr).joinToString(","),
                 "-f", "image2pipe", "-vcodec", "png", "-",
             ),
             timeoutSeconds = 60,
@@ -147,6 +173,10 @@ object Ffmpeg {
         private val input: InputStream = process.inputStream.buffered(width * height * 4 * 2)
         private val frame = ByteArray(width * height * 4)
 
+        /** Frames read so far. */
+        var count = 0
+            private set
+
         /** The next frame's bytes (RGBA, row by row), or null at the end. The array is reused. */
         fun next(): ByteArray? {
             var read = 0
@@ -155,7 +185,21 @@ object Ffmpeg {
                 if (n < 0) return null
                 read += n
             }
+            count++
             return frame
+        }
+
+        /**
+         * After the last frame: throws if FFmpeg gave up on the file, or stopped more than a
+         * second (and a fifth) short of the [expected] frames, as with a damaged video. Otherwise
+         * the part that could be read would be saved as if it were the whole video.
+         */
+        fun checkComplete(expected: Int, fps: Double) {
+            val ended = process.waitFor(10, TimeUnit.SECONDS)
+            val short = count < expected * 0.8 && expected - count > fps
+            check(ended && process.exitValue() == 0 && !short) {
+                "The video could only be read up to ${seconds((count * 1000 / fps).toLong())} s; the file may be damaged"
+            }
         }
 
         override fun close() {
@@ -164,7 +208,11 @@ object Ffmpeg {
         }
     }
 
-    fun reader(file: File, width: Int, height: Int, fps: Double, startMs: Long = 0, lengthMs: Long? = null, speed: Float = 1f, loop: Boolean = false): FrameReader {
+    fun reader(
+        file: File, width: Int, height: Int, fps: Double, startMs: Long = 0, lengthMs: Long? = null, speed: Float = 1f, loop: Boolean = false,
+        /** For an HDR video: [Probe.toSdr]. */
+        toSdr: String? = null,
+    ): FrameReader {
         val command = buildList {
             addAll(listOf(ffmpeg, "-hide_banner", "-loglevel", "error"))
             if (loop) addAll(listOf("-stream_loop", "-1"))
@@ -175,6 +223,8 @@ object Ffmpeg {
                 if (speed != 1f) add("setpts=(PTS-STARTPTS)/$speed")
                 add("fps=$fps")
                 add("scale=$width:$height:flags=bicubic")
+                // After the scaling: the colour work is slow, and there are fewer pixels by then.
+                if (toSdr != null) add(toSdr)
             }
             addAll(listOf("-vf", filters.joinToString(","), "-f", "rawvideo", "-pix_fmt", "rgba", "-"))
         }
@@ -187,20 +237,38 @@ object Ffmpeg {
         private val errors = StringBuilder()
         private val errorReader = Thread { process.errorStream.bufferedReader().forEachLine { synchronized(errors) { errors.appendLine(it) } } }.apply { start() }
 
-        fun write(rgba: ByteArray) = stdin.write(rgba)
+        private fun failure() = EncodingFailed("Encoding failed: ${synchronized(errors) { errors.toString().trim().takeLast(400) }}")
+
+        fun write(rgba: ByteArray) {
+            try {
+                stdin.write(rgba)
+            } catch (e: java.io.IOException) {
+                // FFmpeg has stopped taking frames: the encoder gave up.
+                process.waitFor(5, TimeUnit.SECONDS)
+                errorReader.join(2000)
+                throw failure()
+            }
+        }
 
         /** Waits for FFmpeg to finish the file; throws if it failed. */
         fun finish() {
-            stdin.close()
+            try {
+                stdin.close()
+            } catch (e: java.io.IOException) {
+                // Reported below, with what FFmpeg said.
+            }
             process.waitFor()
             errorReader.join(5000)
-            check(process.exitValue() == 0 && output.length() > 0) { "Encoding failed: ${synchronized(errors) { errors.toString().trim().takeLast(400) }}" }
+            if (process.exitValue() != 0 || output.length() == 0L) throw failure()
         }
 
         override fun close() {
             if (process.isAlive) process.destroyForcibly()
         }
     }
+
+    /** The encoder (not the video being read) failed; another encoder may manage. */
+    class EncodingFailed(message: String) : IllegalStateException(message)
 
     /** Sound for an encode: from [file] starting at [startMs], [lengthMs] long, looped if [loop]. */
     data class Sound(val file: File, val startMs: Long, val lengthMs: Long, val loop: Boolean = false)

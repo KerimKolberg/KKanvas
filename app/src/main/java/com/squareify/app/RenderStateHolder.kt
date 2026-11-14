@@ -44,6 +44,16 @@ object RenderStateHolder {
         _states.update { it + (id to RenderState(isProcessing = false, error = message)) }
     }
 
+    private val cancelled = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** The item was removed from the grid: its render stops, or never starts. */
+    fun cancel(id: String) {
+        cancelled += id
+        clear(id)
+    }
+
+    fun isCancelled(id: String): Boolean = id in cancelled
+
     fun clear(id: String) {
         _states.update { it - id }
     }
