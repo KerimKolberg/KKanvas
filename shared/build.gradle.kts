@@ -65,6 +65,8 @@ kotlin {
             implementation(project.dependencies.platform(libs.androidx.compose.bom))
             implementation(libs.androidx.ui.test.junit4)
             implementation(libs.androidx.ui.test.manifest)
+            // Newer than the one the Compose tests bring along, which fails on Android 16 and later.
+            implementation(libs.androidx.test.espresso.core)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
