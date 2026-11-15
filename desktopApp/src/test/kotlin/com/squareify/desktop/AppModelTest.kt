@@ -105,6 +105,20 @@ class AppModelTest {
     }
 
     @Test
+    fun aSavedPhotoKeepsTheDateItWasTaken() {
+        val model = newModel()
+        val photo = media.photo("dated.jpg")
+        photo.writeBytes(DesktopImages.withDateTaken(photo.readBytes(), "2024:07:15 18:30:05"))
+        val undated = media.photo("undated.jpg")
+        runBlocking(Dispatchers.Swing) { model.addMedia(listOf(photo.toMediaUri(), undated.toMediaUri())) }
+        waitUntil("saved") { model.items.size == 2 && model.items.all { it.isRendered } }
+        val saved = File(pictures, "squared_dated.jpg")
+        assertEquals("2024:07:15 18:30:05", DesktopImages.dateTaken(saved))
+        assertEquals(400 to 400, size(saved), "still a picture that opens")
+        assertNull(DesktopImages.dateTaken(File(pictures, "squared_undated.jpg")))
+    }
+
+    @Test
     fun aNameAlreadyTakenGetsANumber() {
         val model = newModel()
         val a = media.photo("same.jpg")

@@ -4,6 +4,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// The private key the app is signed with. It isn't in the repository: its place and password are
+// in ~/.gradle/gradle.properties on the PC and in the repository's secrets on GitHub. Whoever
+// builds without it (a fork, a pull request) gets the checked-in debug key instead, which can't
+// update an app signed with the private one.
+val privateKeystore = ((findProperty("kkanvasKeystore") as String?) ?: System.getenv("KKANVAS_KEYSTORE"))
+    ?.takeIf { it.isNotBlank() }?.let(::file)?.takeIf { it.exists() }
+val privateKeystorePassword = ((findProperty("kkanvasKeystorePassword") as String?) ?: System.getenv("KKANVAS_KEYSTORE_PASSWORD"))
+    ?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.squareify.app"
     compileSdk {
@@ -21,13 +30,29 @@ android {
     }
 
     signingConfigs {
-        // Checked-in debug key (standard "android" passwords) so builds from this laptop and from
-        // GitHub Actions can update each other on the phone. Not for Play Store releases.
+        // Debug and release builds are signed alike, so either can update the other on the phone.
         getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            if (privateKeystore != null && privateKeystorePassword != null) {
+                storeFile = privateKeystore
+                storePassword = privateKeystorePassword
+                keyAlias = "kkanvas"
+                keyPassword = privateKeystorePassword
+            } else {
+                // The standard Android debug key, public like the rest of the repository.
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
+    buildTypes {
+        // The build for the phone: shrunk and optimised, so it's much smaller and quicker than debug.
+        release {
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

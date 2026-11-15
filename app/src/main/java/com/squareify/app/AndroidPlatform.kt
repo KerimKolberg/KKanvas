@@ -50,7 +50,8 @@ class AndroidPlatform(private val app: Application) : AppPlatform {
 
     override fun videoDurationMs(uri: Uri): Long? = com.squareify.app.videoDurationMs(app, uri)
 
-    override fun saveImage(bitmap: Bitmap, name: String, replace: Uri?): Uri? = GallerySaver.saveImage(app, bitmap, name, replace)
+    override fun saveImage(bitmap: Bitmap, name: String, replace: Uri?, dateFrom: Uri?): Uri? =
+        GallerySaver.saveImage(app, bitmap, name, replace, dateFrom)
 
     override fun deleteOwn(uri: Uri) = GallerySaver.deleteOwn(app, uri)
 

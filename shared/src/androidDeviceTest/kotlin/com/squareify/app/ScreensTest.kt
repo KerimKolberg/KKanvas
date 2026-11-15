@@ -48,7 +48,7 @@ class ScreensTest {
         override fun loadPhoto(uri: MediaUri, maxSize: Int): PlatformBitmap = photos.getValue(uri.toString()).copy(Bitmap.Config.ARGB_8888, true)
         override fun findFaces(photo: PlatformBitmap): Pair<Float, Float>? = null
         override fun videoDurationMs(uri: MediaUri): Long? = null
-        override fun saveImage(bitmap: PlatformBitmap, name: String, replace: MediaUri?): MediaUri? = null
+        override fun saveImage(bitmap: PlatformBitmap, name: String, replace: MediaUri?, dateFrom: MediaUri?): MediaUri? = null
         override fun deleteOwn(uri: MediaUri) = Unit
         override fun renderVideo(item: MediaItem) = Unit
         override val renderStates = MutableStateFlow<Map<String, RenderState>>(emptyMap())

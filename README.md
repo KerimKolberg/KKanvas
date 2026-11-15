@@ -112,14 +112,29 @@ install `shared/build/outputs/apk/androidTest/shared-androidTest.apk` and run
 Open this folder in Android Studio and run the `app` configuration, or from a terminal:
 
 ```
-gradlew assembleDebug testDebugUnitTest
+gradlew assembleRelease testDebugUnitTest
 ```
 
-The APK ends up in `app/build/outputs/apk/debug/`. GitHub Actions
-(`.github/workflows/android.yml`) builds it and runs the tests on every push.
+The APK for the phone ends up in `app/build/outputs/apk/release/`: shrunk and optimised
+(about 6 MB; the debug build from `assembleDebug` is about 66 MB and slower). GitHub Actions
+(`.github/workflows/android.yml`) builds it and runs the tests on every push, and puts it on
+the GitHub release for a version tag.
 
-`app/debug.keystore` is a debug-only signing key, checked in so local and CI builds
-can update each other on the phone. A Play Store release would need its own private key.
+Both builds are signed with a private key that isn't in the repository: on the PC its place
+and password are in `~/.gradle/gradle.properties` (`kkanvasKeystore`,
+`kkanvasKeystorePassword`), on GitHub in the repository's secrets (`KKANVAS_KEYSTORE_BASE64`,
+`KKANVAS_KEYSTORE_PASSWORD`). Keep a copy of the key file and its password somewhere safe:
+without them, no new version can update the installed app. Whoever builds without the key
+gets the checked-in `app/debug.keystore` (the standard Android debug key) instead; such a
+build can't update an app signed with the private key.
+
+Saved photos carry the date their original was taken (nothing else from the camera: no
+location), so the gallery sorts them beside the original.
+
+## Licence
+
+MIT, see `LICENSE`. The bundled fonts have their own open licences (beside them), and the
+Windows app ships FFmpeg under its own licence (in its `ffmpeg` folder).
 
 ## History
 

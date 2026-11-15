@@ -39,8 +39,12 @@ interface AppPlatform {
     /** A video's length in ms, or null if it can't be read. */
     fun videoDurationMs(uri: MediaUri): Long?
 
-    /** Saves a finished picture as a JPEG named [name], replacing the file [replace] if there is one. */
-    fun saveImage(bitmap: PlatformBitmap, name: String, replace: MediaUri?): MediaUri?
+    /**
+     * Saves a finished picture as a JPEG named [name], replacing the file [replace] if there is one.
+     * With [dateFrom] it gets that photo's date taken (not its location), so the gallery sorts it
+     * beside the original.
+     */
+    fun saveImage(bitmap: PlatformBitmap, name: String, replace: MediaUri?, dateFrom: MediaUri? = null): MediaUri?
 
     /** Deletes a file this app saved earlier (e.g. a slide left over from a longer version). */
     fun deleteOwn(uri: MediaUri)

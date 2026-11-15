@@ -75,8 +75,12 @@ class DesktopPlatform(override val context: PlatformContext = DesktopContext) : 
         null
     }
 
-    override fun saveImage(bitmap: PlatformBitmap, name: String, replace: MediaUri?): MediaUri? =
-        saveFile(WindowsFolders.pictures, "$name.jpg", replace) { it.writeBytes(DesktopImages.jpeg(bitmap)) }
+    override fun saveImage(bitmap: PlatformBitmap, name: String, replace: MediaUri?, dateFrom: MediaUri?): MediaUri? {
+        // The original's date taken (only that), so Explorer and Photos sort the result beside it.
+        val date = dateFrom?.let { runCatching { DesktopImages.dateTaken(it.toFile()) }.getOrNull() }
+        val jpeg = DesktopImages.jpeg(bitmap).let { if (date != null) DesktopImages.withDateTaken(it, date) else it }
+        return saveFile(WindowsFolders.pictures, "$name.jpg", replace) { it.writeBytes(jpeg) }
+    }
 
     override fun deleteOwn(uri: MediaUri) {
         val file = uri.toFile()

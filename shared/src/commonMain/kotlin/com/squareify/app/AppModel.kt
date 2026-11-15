@@ -628,6 +628,8 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
             framed,
             if (collage != null) item.displayName else outputFileName(item.settings.format, item.displayName),
             replace = item.outputUri,
+            // A collage has several originals, so no one date.
+            dateFrom = item.sourceUri.takeIf { collage == null },
         )
         framed.asImage().recycle()
         return uri
@@ -644,7 +646,7 @@ class AppModel(val platform: AppPlatform, private val scope: CoroutineScope) {
         val source = platform.loadPhoto(item.sourceUri, needed)
         val uris = (0 until panorama.slides).map { i ->
             val slide = PanoramaRenderer.renderSlide(source, panorama, item.settings, i, width, height)
-            val uri = platform.saveImage(slide, slideFileName(item.displayName, i), replace = item.outputUris.getOrNull(i))
+            val uri = platform.saveImage(slide, slideFileName(item.displayName, i), replace = item.outputUris.getOrNull(i), dateFrom = item.sourceUri)
             slide.asImage().recycle()
             uri ?: throw IllegalStateException("Couldn't save slide ${i + 1}")
         }

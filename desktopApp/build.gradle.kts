@@ -56,7 +56,8 @@ compose.desktop {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "kkanvas"
             // The phone's version (Windows installers want three numbers).
-            packageVersion = "${libs.versions.appVersion.get()}.0"
+            // The installer wants exactly three numbers: "1.2" becomes 1.2.0, "1.2.1" stays.
+            packageVersion = (libs.versions.appVersion.get().split('.') + listOf("0", "0")).take(3).joinToString(".")
             description = "Pads, edits and builds Instagram posts"
             vendor = "kk"
             appResourcesRootDir.set(appResources)

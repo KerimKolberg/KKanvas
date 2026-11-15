@@ -5,6 +5,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -58,7 +59,7 @@ object GallerySaver {
         }
     }
 
-    fun saveImage(context: Context, bitmap: Bitmap, displayName: String, replace: Uri?): Uri? =
+    fun saveImage(context: Context, bitmap: Bitmap, displayName: String, replace: Uri?, dateFrom: Uri? = null): Uri? =
         save(
             context,
             replace,
@@ -66,7 +67,34 @@ object GallerySaver {
             "$displayName.jpg",
             "image/jpeg",
             Environment.DIRECTORY_PICTURES,
+            written = { saved -> if (dateFrom != null) copyDateTaken(context, dateFrom, saved) },
         ) { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out) }
+
+    /**
+     * Gives [to] the date [from] was taken (only that: no location or camera details), so the
+     * gallery sorts the result beside its original instead of under today.
+     */
+    private fun copyDateTaken(context: Context, from: Uri, to: Uri) {
+        try {
+            val resolver = context.contentResolver
+            val original = resolver.openInputStream(from)?.use { ExifInterface(it) } ?: return
+            val date = DATE_TAGS.mapNotNull { tag -> original.getAttribute(tag)?.let { tag to it } }
+            if (date.none { (tag, _) -> tag == ExifInterface.TAG_DATETIME_ORIGINAL }) return
+            resolver.openFileDescriptor(to, "rw")?.use { file ->
+                val saved = ExifInterface(file.fileDescriptor)
+                date.forEach { (tag, value) -> saved.setAttribute(tag, value) }
+                saved.saveAttributes()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "could not copy the date taken from $from", e)
+        }
+    }
+
+    private val DATE_TAGS = listOf(
+        ExifInterface.TAG_DATETIME_ORIGINAL,
+        ExifInterface.TAG_OFFSET_TIME_ORIGINAL,
+        ExifInterface.TAG_SUBSEC_TIME_ORIGINAL,
+    )
 
     /** Copies [file] into the gallery, then deletes it. */
     fun saveVideo(context: Context, file: File, displayName: String, replace: Uri?): Uri? {
@@ -93,6 +121,8 @@ object GallerySaver {
         fileName: String,
         mimeType: String,
         directory: String,
+        /** After the file is written, before the gallery reads it in. */
+        written: (Uri) -> Unit = {},
         write: (OutputStream) -> Unit,
     ): Uri? {
         val resolver = context.contentResolver
@@ -100,6 +130,7 @@ object GallerySaver {
             try {
                 val out = resolver.openOutputStream(replace, "wt") ?: throw FileNotFoundException("$replace")
                 out.use(write)
+                written(replace)
                 // The format, and with it the file name prefix, may have changed.
                 rename(resolver, replace, fileName)
                 return replace
@@ -117,6 +148,7 @@ object GallerySaver {
         val uri = resolver.insert(collection, values) ?: return null
         try {
             resolver.openOutputStream(uri)?.use(write)
+            written(uri)
             val done = ContentValues()
             done.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, done, null, null)
